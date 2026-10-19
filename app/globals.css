@@ -1,0 +1,779 @@
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plus-jakarta-sans.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --paper: #fbfaf8;
+  --ink: #1b1b1f;
+  --muted: #6b6b73;
+  --border: #e4e1da;
+  --grid: #ece9e2;
+  --mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 14px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #d6336c;
+  outline-offset: 2px;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  width: 100%;
+  min-width: 320px;
+  min-height: 900px;
+  height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.side {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--paper);
+}
+
+.watchlist-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+}
+
+.watchlist-heading h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.watchlist-heading > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.watchlist-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+
+.watchlist-actions button {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.add-symbol {
+  border: 0;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.add-symbol:hover {
+  background: #35353a;
+}
+
+.add-alert {
+  border: 1px solid #d6d2c9;
+  background: transparent;
+  color: var(--ink);
+}
+
+.add-alert:hover {
+  background: #f1efea;
+}
+
+.watchlist {
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.watch-row-wrap {
+  position: relative;
+  display: flex;
+  min-height: 60px;
+  border-bottom: 1px solid var(--grid);
+}
+
+.watch-row-wrap.selected {
+  border-left: 3px solid #d6336c;
+  background: #fbeef4;
+}
+
+.watch-row {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.watch-row:hover {
+  background: #f1efea;
+}
+
+.watch-row-identity,
+.watch-row-price {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.watch-row-identity > span:first-child {
+  display: flex;
+  align-items: baseline;
+}
+
+.watch-row b {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.watch-row .exchange {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.company-name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watch-row-price {
+  flex: 0 0 auto;
+  align-items: flex-end;
+  text-align: right;
+  font-family: var(--mono);
+}
+
+.watch-row-price b {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.watch-row-price > span {
+  font-size: 12px;
+}
+
+.positive {
+  color: #0f7a5c;
+}
+
+.negative {
+  color: #c0262d;
+}
+
+.remove-symbol {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: none;
+  width: 25px;
+  height: 25px;
+  transform: translateY(-50%);
+  border: 1px solid #d6d2c9;
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.watch-row-wrap:hover .remove-symbol,
+.remove-symbol:focus-visible {
+  display: grid;
+  place-items: center;
+}
+
+.watch-row-wrap:hover .watch-row-price {
+  visibility: hidden;
+}
+
+.sidebar-message {
+  padding: 20px 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.quote-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.quote-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.quote-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.header-price {
+  font-family: var(--mono);
+  font-size: 18px;
+}
+
+.header-change {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.range-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.range-controls button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.range-controls button:hover {
+  background: #f1efea;
+}
+
+.range-controls button.range-active {
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.range-controls button.indicator-toggle {
+  padding: 0 12px;
+}
+
+.trade-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.trade-controls button {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.buy-button {
+  background: #b6f23c;
+}
+
+.buy-button:hover {
+  background: #a4df31;
+}
+
+.sell-button {
+  background: #ff6b6b;
+}
+
+.sell-button:hover {
+  background: #f45a5a;
+}
+
+.price-chart,
+.macd-chart,
+.rsi-chart {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+}
+
+.price-chart {
+  flex: 0 0 331px;
+  border-bottom: 1px solid var(--border);
+}
+
+.main-indicator-legend {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 12px;
+  right: 84px;
+  display: flex;
+  width: fit-content;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.main-indicator-legend > span:first-child {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 600;
+}
+
+.chart-placeholder {
+  display: grid;
+  height: 330px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.candle-svg {
+  display: block;
+  width: 100%;
+  height: 330px;
+}
+
+.chart-grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.volume-separator {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.price-axis {
+  position: relative;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.axis-value {
+  position: absolute;
+  left: 4px;
+  transform: translateY(-50%);
+  color: #6b6b73;
+  font-size: 10px;
+}
+
+.axis-tag {
+  position: absolute;
+  left: 4px;
+  padding: 2px 4px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  color: #fff;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.drawing-toolbar {
+  position: absolute;
+  z-index: 2;
+  bottom: 52px;
+  left: 50%;
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+  transform: translateX(-50%);
+  border: 1px solid #d6d2c9;
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 8%);
+}
+
+.drawing-toolbar button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.drawing-toolbar button:hover {
+  background: #ece9e2;
+}
+
+.drawing-toolbar svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #1b1b1f;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.macd-chart {
+  flex: 0 0 131px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-heading {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.pane-heading b {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 600;
+}
+
+.macd-line-color {
+  color: #1d6fe0;
+}
+
+.macd-signal-color,
+.rsi-signal-color {
+  color: #be123c;
+}
+
+.indicator-svg {
+  display: block;
+  width: 100%;
+  height: 130px;
+}
+
+.indicator-grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.empty-axis {
+  border-left: 1px solid var(--border);
+}
+
+.rsi-chart {
+  flex: 1 1 auto;
+  min-height: 170px;
+}
+
+.rsi-chart > .indicator-svg {
+  height: 100%;
+  min-height: 170px;
+}
+
+.rsi-guide {
+  stroke: #6d28d9;
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.rsi-line-color {
+  color: #a16207;
+}
+
+.rsi-axis {
+  position: relative;
+  border-left: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.rsi-level {
+  position: absolute;
+  left: 4px;
+  padding: 2px 4px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  color: #fff;
+}
+
+.rsi-current {
+  top: 56%;
+  background: #a16207;
+}
+
+.rsi-average {
+  top: 66%;
+  background: #6d28d9;
+}
+
+.chart-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 16px;
+  border-bottom: 1px solid #e9c4c3;
+  background: #fbeef4;
+  color: #c0262d;
+  font-size: 12px;
+}
+
+.error-banner button,
+.modal-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(27 27 31 / 45%);
+}
+
+.add-modal {
+  position: relative;
+  width: min(100%, 390px);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 15%);
+}
+
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  color: var(--muted);
+}
+
+.add-modal h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.add-modal p {
+  margin: 8px 0 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.add-modal label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.add-modal input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d6d2c9;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.submit-button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.submit-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+@media (max-width: 860px) {
+  .app {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .side {
+    min-height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .watchlist {
+    max-height: 360px;
+  }
+
+  .app main {
+    min-height: 830px;
+  }
+
+  .chart-header {
+    gap: 8px;
+  }
+
+  .quote-heading {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .range-controls {
+    margin-left: 0;
+  }
+
+  .trade-controls {
+    margin-left: auto;
+  }
+
+  .drawing-toolbar {
+    bottom: 26px;
+  }
+}
+
+@media (max-width: 520px) {
+  .chart-header {
+    padding: 9px;
+  }
+
+  .quote-heading {
+    width: 100%;
+  }
+
+  .quote-heading h2 {
+    font-size: 18px;
+  }
+
+  .header-price {
+    font-size: 15px;
+  }
+
+  .header-change {
+    font-size: 11px;
+  }
+
+  .range-controls button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 8px;
+  }
+
+  .trade-controls {
+    gap: 4px;
+  }
+
+  .trade-controls button {
+    min-height: 38px;
+    padding: 0 12px;
+  }
+
+  .price-chart,
+  .macd-chart,
+  .rsi-chart {
+    grid-template-columns: minmax(0, 1fr) 58px;
+  }
+
+  .main-indicator-legend {
+    left: 5px;
+    right: 60px;
+    gap: 5px 8px;
+    font-size: 9px;
+  }
+
+  .drawing-toolbar {
+    gap: 0;
+    padding: 3px;
+  }
+
+  .drawing-toolbar button {
+    width: 34px;
+    height: 36px;
+  }
+
+  .chart-footer {
+    padding: 8px;
+    font-size: 9px;
+  }
+}
