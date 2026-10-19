@@ -377,9 +377,9 @@ function footerDate(candles: Candle[]) {
 function CandleChart({ candles }: { candles: Candle[] }) {
   const width = 1000;
   const height = 330;
-  const priceBottom = 255;
-  const volumeTop = 270;
-  const volumeBottom = 323;
+  const priceBottom = 330;
+  const volumeTop = 240;
+  const volumeBottom = 330;
   const min = Math.min(...candles.map((candle) => candle.low));
   const max = Math.max(...candles.map((candle) => candle.high));
   const padding = (max - min || max * 0.02) * 0.08;
