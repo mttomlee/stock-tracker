@@ -56,7 +56,6 @@ input:focus-visible {
   grid-template-columns: 340px minmax(0, 1fr);
   width: 100%;
   min-width: 320px;
-  min-height: 900px;
   height: 100vh;
   background: var(--paper);
   color: var(--ink);
@@ -438,8 +437,13 @@ input:focus-visible {
   white-space: nowrap;
 }
 
+.macd-chart,
+.rsi-chart {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
 .macd-chart {
-  flex: 0 0 131px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -472,7 +476,7 @@ input:focus-visible {
 .indicator-svg {
   display: block;
   width: 100%;
-  height: 130px;
+  height: 100%;
 }
 
 .indicator-grid {
@@ -482,16 +486,6 @@ input:focus-visible {
 
 .empty-axis {
   border-left: 1px solid var(--border);
-}
-
-.rsi-chart {
-  flex: 1 1 auto;
-  min-height: 170px;
-}
-
-.rsi-chart > .indicator-svg {
-  height: 100%;
-  min-height: 170px;
 }
 
 .rsi-guide {
