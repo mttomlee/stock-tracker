@@ -1,7 +1,9 @@
+import json
 import logging
 import os
 import re
 from datetime import date
+from pathlib import Path
 from typing import Literal
 
 import pandas as pd
@@ -12,7 +14,6 @@ from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_WATCHLIST = ["TSM", "AAPL", "AMZN", "ARM", "BABA", "BTC-USD", "GOOG", "JPM"]
 SYMBOL_PATTERN = re.compile(r"^[A-Z0-9^.=/-]{1,20}$")
 WEEKS_BEFORE = 52
 WEEKS_AFTER = 52
@@ -29,6 +30,60 @@ STOCK_NAMES = {
     "^IXIC": ("Nasdaq Composite", "NASDAQ"),
 }
 
+WATCHLIST_PATH = Path(__file__).parent.parent / "data" / "watchlist.json"
+
+def load_watchlist() -> list[str]:
+    """Load symbols from watchlist.json (first watchlist's tickets)."""
+    try:
+        with open(WATCHLIST_PATH, "r") as f:
+            data = json.load(f)
+        if data and isinstance(data, list) and len(data) > 0:
+            tickets = data[0].get("tickets", [])
+            return [t["symbol"] for t in tickets if "symbol" in t]
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, IndexError):
+        pass
+    # Fallback to defaults if file missing or corrupt
+    return ["TSM", "AAPL", "AMZN", "ARM", "BABA", "BTC-USD", "GOOG", "JPM"]
+
+def save_watchlist(symbols: list[str]) -> None:
+    """Save symbols to watchlist.json, preserving structure."""
+    try:
+        with open(WATCHLIST_PATH, "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = [{"watchlistName": "Watchlist 1", "tickets": []}]
+    
+    # Update first watchlist's tickets
+    if data and isinstance(data, list) and len(data) > 0:
+        existing_tickets = {t["symbol"]: t for t in data[0].get("tickets", [])}
+        new_tickets = []
+        for sym in symbols:
+            if sym in existing_tickets:
+                new_tickets.append(existing_tickets[sym])
+            else:
+                name, exchange = STOCK_NAMES.get(sym, (sym, "MARKET"))
+                new_tickets.append({"symbol": sym, "ticketName": name, "exchange": exchange})
+        data[0]["tickets"] = new_tickets
+    
+    with open(WATCHLIST_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+def fetch_symbol_info(symbol: str) -> tuple[str, str]:
+    """Fetch longName and exchange from yfinance. Falls back to STOCK_NAMES or defaults."""
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        name = info.get("longName") or info.get("shortName") or symbol
+        exchange = info.get("fullExchangeName") or info.get("exchange") or "MARKET"
+        # Normalize common exchange names
+        if exchange == "NMS":
+            exchange = "NASDAQ"
+        elif exchange == "NYQ":
+            exchange = "NYSE"
+        return name, exchange
+    except Exception:
+        return STOCK_NAMES.get(symbol, (symbol, "MARKET"))
+
 app = FastAPI(title="Stockroom API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
@@ -42,7 +97,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
-watchlist = DEFAULT_WATCHLIST.copy()
+watchlist = load_watchlist()
 
 
 class AddSymbol(BaseModel):
@@ -227,7 +282,47 @@ def add_to_watchlist(request: AddSymbol):
     data = _download(tickers=symbol, period="5d", interval="1d")
     quote = _latest_quote(data, symbol)
     watchlist.append(symbol)
+    save_watchlist(watchlist)
     return {"quote": quote}
+
+
+@app.post("/api/watchlist/add_symbol", status_code=201)
+def add_symbol(request: AddSymbol):
+    """Add symbol to watchlist, fetching name and exchange from yfinance."""
+    symbol = request.symbol
+    if symbol in watchlist:
+        raise HTTPException(status_code=409, detail=f"{symbol} is already on your watchlist.")
+    
+    # Fetch name and exchange from yfinance
+    name, exchange = fetch_symbol_info(symbol)
+    
+    # Verify symbol has valid market data
+    data = _download(tickers=symbol, period="5d", interval="1d")
+    _latest_quote(data, symbol)
+    
+    watchlist.append(symbol)
+    
+    # Save with fetched info
+    try:
+        with open(WATCHLIST_PATH, "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = [{"watchlistName": "Watchlist 1", "tickets": []}]
+    
+    if data and isinstance(data, list) and len(data) > 0:
+        existing_tickets = {t["symbol"]: t for t in data[0].get("tickets", [])}
+        new_tickets = []
+        for sym in watchlist:
+            if sym in existing_tickets:
+                new_tickets.append(existing_tickets[sym])
+            else:
+                new_tickets.append({"symbol": sym, "ticketName": name, "exchange": exchange})
+        data[0]["tickets"] = new_tickets
+    
+    with open(WATCHLIST_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+    
+    return {"symbol": symbol, "name": name, "exchange": exchange}
 
 
 @app.delete("/api/watchlist")
@@ -238,6 +333,7 @@ def remove_from_watchlist(symbol: str = Query(min_length=1, max_length=20)):
     if symbol not in watchlist:
         raise HTTPException(status_code=404, detail=f"{symbol} is not on your watchlist.")
     watchlist.remove(symbol)
+    save_watchlist(watchlist)
     return {"removed": symbol}
 
 

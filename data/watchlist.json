@@ -8,11 +8,6 @@
         "exchange": "NYSE"
       },
       {
-        "symbol": "AAPL",
-        "ticketName": "Apple Inc.",
-        "exchange": "NASDAQ"
-      },
-      {
         "symbol": "AMZN",
         "ticketName": "Amazon.com, Inc.",
         "exchange": "NASDAQ"
@@ -41,6 +36,11 @@
         "symbol": "JPM",
         "ticketName": "JPMorgan Chase & Co.",
         "exchange": "NYSE"
+      },
+      {
+        "symbol": "NVDA",
+        "ticketName": "NVIDIA Corporation",
+        "exchange": "NasdaqGS"
       }
     ]
   }
