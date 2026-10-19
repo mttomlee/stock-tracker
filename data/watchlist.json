@@ -1,0 +1,47 @@
+[
+  {
+    "watchlistName": "Watchlist 1",
+    "tickets": [
+      {
+        "symbol": "TSM",
+        "ticketName": "Taiwan Semiconductor",
+        "exchange": "NYSE"
+      },
+      {
+        "symbol": "AAPL",
+        "ticketName": "Apple Inc.",
+        "exchange": "NASDAQ"
+      },
+      {
+        "symbol": "AMZN",
+        "ticketName": "Amazon.com, Inc.",
+        "exchange": "NASDAQ"
+      },
+      {
+        "symbol": "ARM",
+        "ticketName": "Arm Holdings plc",
+        "exchange": "NASDAQ"
+      },
+      {
+        "symbol": "BABA",
+        "ticketName": "Alibaba Group Holding",
+        "exchange": "NYSE"
+      },
+      {
+        "symbol": "BTC-USD",
+        "ticketName": "Bitcoin / US Dollar",
+        "exchange": "CRYPTO"
+      },
+      {
+        "symbol": "GOOG",
+        "ticketName": "Alphabet Inc.",
+        "exchange": "NASDAQ"
+      },
+      {
+        "symbol": "JPM",
+        "ticketName": "JPMorgan Chase & Co.",
+        "exchange": "NYSE"
+      }
+    ]
+  }
+]
