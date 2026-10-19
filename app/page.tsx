@@ -297,14 +297,6 @@ export default function Home() {
           ) : (
             <div className="chart-placeholder">No price history is available.</div>
           )}
-          <div className="drawing-toolbar" aria-label="Chart drawing tools">
-            <button type="button" aria-label="Trend line" title="Trend line"><TrendIcon /></button>
-            <button type="button" aria-label="Horizontal line" title="Horizontal line"><HorizontalIcon /></button>
-            <button type="button" aria-label="Circle" title="Circle"><CircleIcon /></button>
-            <button type="button" aria-label="Brush" title="Brush"><BrushIcon /></button>
-            <button type="button" aria-label="Text" title="Text"><TextIcon /></button>
-            <button type="button" aria-label="Delete drawings" title="Delete drawings"><DeleteIcon /></button>
-          </div>
           <PriceAxis candles={candles} loading={loadingChart} />
         </section>
 
@@ -555,26 +547,3 @@ function RsiChart({ candles }: { candles: Candle[] }) {
   );
 }
 
-function TrendIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 18 14-12M5 18l-.5-4M5 18l4-.5M19 6l.5 4M19 6l-4 .5" /></svg>;
-}
-
-function HorizontalIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>;
-}
-
-function CircleIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.5" /></svg>;
-}
-
-function BrushIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 17 11-11 2 2L8 19l-4 1 2-3Z" /><path d="M6 17c-1 0-2 1-2 3" /></svg>;
-}
-
-function TextIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7V5h12v2M12 5v14M9 19h6" /></svg>;
-}
-
-function DeleteIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V5h6v2m-8 0 1 12h8l1-12m-7 3v6m4-6v6" /></svg>;
-}
