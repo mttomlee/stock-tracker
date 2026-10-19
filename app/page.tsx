@@ -401,7 +401,6 @@ function CandleChart({ candles }: { candles: Candle[] }) {
           <line x1="0" x2={width} y1={y(value)} y2={y(value)} className="chart-grid" />
         </g>
       ))}
-      <line x1="0" x2={width} y1={volumeTop} y2={volumeTop} className="volume-separator" />
       {candles.map((candle, index) => {
         const rising = candle.close >= candle.open;
         const color = rising ? "#2a9d8f" : "#e63946";
