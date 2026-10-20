@@ -1,12 +1,54 @@
 import unittest
+from datetime import date
+from unittest.mock import patch
 
 import pandas as pd
 from fastapi import HTTPException
 
-from backend.main import history_payload, weekly_window
+from backend.main import get_stock_history, history_payload, weekly_window
 
 
 class MarketDataTests(unittest.TestCase):
+    def test_custom_history_range_includes_end_date(self):
+        frame = pd.DataFrame(
+            {
+                "Open": [10.0],
+                "High": [12.0],
+                "Low": [9.0],
+                "Close": [11.0],
+                "Volume": [1000],
+            },
+            index=pd.date_range("2025-01-01", periods=1),
+        )
+        with (
+            patch("backend.main.watchlist", ["TSM"]),
+            patch("backend.main._download", return_value=frame) as download,
+        ):
+            payload = get_stock_history(
+                "TSM", start_date=date(2025, 1, 1), end_date=date(2025, 1, 3)
+            )
+
+        download.assert_called_once_with(
+            tickers="TSM",
+            start=date(2025, 1, 1),
+            end=date(2025, 1, 4),
+            interval="1d",
+        )
+        self.assertEqual(payload["range"], "2025-01-01 - 2025-01-03")
+
+    def test_custom_history_range_requires_ordered_date_pair(self):
+        with self.assertRaises(HTTPException) as error:
+            get_stock_history(
+                "TSM", start_date=date(2025, 1, 3), end_date=None
+            )
+        self.assertEqual(error.exception.status_code, 422)
+
+        with self.assertRaises(HTTPException) as error:
+            get_stock_history(
+                "TSM", start_date=date(2025, 1, 3), end_date=date(2025, 1, 1)
+            )
+        self.assertEqual(error.exception.status_code, 422)
+
     def test_history_payload_calculates_moving_averages(self):
         dates = pd.date_range("2025-01-01", periods=220, freq="D")
         close = pd.Series(range(100, 320), index=dates, dtype=float)

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import DateRangePicker from "./DateRangePicker";
 
 type Quote = {
   symbol: string;
@@ -35,8 +36,7 @@ type History = {
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const RANGES = ["1D", "1W", "1M", "1Y"] as const;
-type ChartRange = (typeof RANGES)[number];
+type ChartRange = "1D" | "1W" | "1M" | "1Y";
 
 const AVERAGES = [
   { key: "ema_9", label: "EMA 9", color: "#0b7f73" },
@@ -104,7 +104,9 @@ function signed(value: number, suffix = "") {
 export default function Home() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [selected, setSelected] = useState("TSM");
-  const [range, setRange] = useState<ChartRange>("1W");
+  const range: ChartRange = "1W";
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [history, setHistory] = useState<History | null>(null);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
@@ -133,8 +135,18 @@ export default function Home() {
 
   useEffect(() => {
     if (!selected) return;
+    if (startDate || endDate) {
+      if (!startDate || !endDate || startDate > endDate) return;
+    }
+
     const controller = new AbortController();
-    const params = new URLSearchParams({ symbol: selected, range });
+    const params = new URLSearchParams({ symbol: selected });
+    if (startDate && endDate) {
+      params.set("start", startDate);
+      params.set("end", endDate);
+    } else {
+      params.set("range", range);
+    }
     request<History>(`/api/stocks/history?${params}`, { signal: controller.signal })
       .then((data) => {
         setHistory(data);
@@ -147,7 +159,7 @@ export default function Home() {
         if (!controller.signal.aborted) setLoadingChart(false);
       });
     return () => controller.abort();
-  }, [range, selected]);
+  }, [endDate, range, selected, startDate]);
 
   async function addSymbol(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -171,7 +183,7 @@ export default function Home() {
       };
       setQuotes((current) => [...current, quote]);
       setSelected(result.symbol);
-      setLoadingChart(true);
+      setLoadingChart(rangeIsValid);
       setSymbolInput("");
       setShowAdd(false);
     } catch (reason) {
@@ -189,7 +201,7 @@ export default function Home() {
       setQuotes(remaining);
       if (selected === symbol) {
         setSelected(remaining[0]?.symbol ?? "");
-        setLoadingChart(remaining.length > 0);
+        setLoadingChart(remaining.length > 0 && rangeIsValid);
         if (remaining.length === 0) setHistory(null);
       }
     } catch (reason) {
@@ -199,6 +211,14 @@ export default function Home() {
 
   const activeQuote = quotes.find((quote) => quote.symbol === selected);
   const candles = history?.symbol === selected ? history.candles : [];
+  const rangeIsValid =
+    !(startDate || endDate) || Boolean(startDate && endDate && startDate <= endDate);
+  const visibleError =
+    startDate && endDate && startDate > endDate
+      ? "Start date must be on or before end date."
+      : error;
+  const defaultStart = candles[0]?.date.slice(0, 10) ?? "";
+  const defaultEnd = candles[candles.length - 1]?.date.slice(0, 10) ?? "";
 
   return (
     <div className="app">
@@ -222,7 +242,7 @@ export default function Home() {
                 <button className="watch-row" onClick={() => {
                   if (selected !== quote.symbol) {
                     setSelected(quote.symbol);
-                    setLoadingChart(true);
+                    setLoadingChart(rangeIsValid);
                   }
                 }}>
                   <span className="watch-row-identity">
@@ -250,7 +270,10 @@ export default function Home() {
         <header className="chart-header">
           <div className="quote-heading">
             <h2>{symbolLabel(selected)}</h2>
-            <span className="quote-meta">{activeQuote ? exchangeLabel(activeQuote.exchange) : "—"} · {range}</span>
+            <span className="quote-meta">
+              {activeQuote ? exchangeLabel(activeQuote.exchange) : "—"} ·{" "}
+              {startDate && endDate ? `${startDate} – ${endDate}` : range}
+            </span>
             <span className="header-price">{activeQuote ? priceLabel(activeQuote.price, selected) : "—"}</span>
             {activeQuote && (
               <span className={`header-change ${activeQuote.change >= 0 ? "positive" : "negative"}`}>
@@ -258,33 +281,26 @@ export default function Home() {
               </span>
             )}
           </div>
-          <div className="range-controls" role="group" aria-label="Chart range">
-            {RANGES.map((item) => (
-              <button
-                className={range === item ? "range-active" : ""}
-                key={item}
-                aria-pressed={range === item}
-                onClick={() => {
-                  if (range !== item) {
-                    setRange(item);
-                    setLoadingChart(true);
-                  }
-                }}
-              >
-                {item}
-              </button>
-            ))}
-            <button className="indicator-toggle" type="button">Indicators</button>
-          </div>
-          <div className="trade-controls">
-            <button className="buy-button" type="button">Buy</button>
-            <button className="sell-button" type="button">Sell</button>
-          </div>
+          <DateRangePicker
+            start={startDate}
+            end={endDate}
+            defaultStart={defaultStart}
+            defaultEnd={defaultEnd}
+            defaultPreset={range}
+            onApply={(start, end) => {
+              setError("");
+              if (start !== startDate || end !== endDate) {
+                setLoadingChart(true);
+                setStartDate(start);
+                setEndDate(end);
+              }
+            }}
+          />
         </header>
 
-        {error && (
+        {visibleError && (
           <div className="error-banner" role="alert">
-            <span>{error}</span>
+            <span>{visibleError}</span>
             <button onClick={() => setError("")} aria-label="Dismiss error">×</button>
           </div>
         )}
@@ -553,4 +569,3 @@ function RsiChart({ candles }: { candles: Candle[] }) {
     </svg>
   );
 }
-

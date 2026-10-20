@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import re
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -341,10 +341,29 @@ def remove_from_watchlist(symbol: str = Query(min_length=1, max_length=20)):
 def get_stock_history(
     symbol: str = Query(min_length=1, max_length=20),
     chart_range: Literal["1D", "1W", "1M", "1Y"] = Query(default="1W", alias="range"),
+    start_date: date | None = Query(default=None, alias="start"),
+    end_date: date | None = Query(default=None, alias="end"),
 ):
     symbol = symbol.strip().upper()
     if not SYMBOL_PATTERN.fullmatch(symbol):
         raise HTTPException(status_code=422, detail="Use a valid ticker symbol.")
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(status_code=422, detail="Provide both start and end dates.")
+    if start_date and end_date:
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=422, detail="Start date must be on or before end date."
+            )
+        data = _download(
+            tickers=symbol,
+            start=start_date,
+            end=end_date + timedelta(days=1),
+            interval="1d",
+        )
+        return history_payload(
+            data, symbol, f"{start_date.isoformat()} - {end_date.isoformat()}"
+        )
+
     period_settings = {
         "1D": ("1d", "5m"),
         "1W": ("5d", "30m"),

@@ -13,16 +13,6 @@
         "exchange": "NASDAQ"
       },
       {
-        "symbol": "ARM",
-        "ticketName": "Arm Holdings plc",
-        "exchange": "NASDAQ"
-      },
-      {
-        "symbol": "BABA",
-        "ticketName": "Alibaba Group Holding",
-        "exchange": "NYSE"
-      },
-      {
         "symbol": "BTC-USD",
         "ticketName": "Bitcoin / US Dollar",
         "exchange": "CRYPTO"
@@ -38,9 +28,9 @@
         "exchange": "NYSE"
       },
       {
-        "symbol": "NVDA",
-        "ticketName": "NVIDIA Corporation",
-        "exchange": "NasdaqGS"
+        "symbol": "^IXIC",
+        "ticketName": "NASDAQ Composite",
+        "exchange": "Nasdaq GIDS"
       }
     ]
   }
