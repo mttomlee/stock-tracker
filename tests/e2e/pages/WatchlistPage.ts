@@ -33,7 +33,7 @@ export class WatchlistPage {
     this.dateRangeTrigger = page.locator('.date-range-trigger');
     this.datePickerPopover = page.locator('.date-picker-popover');
     this.chart = page.locator('svg.candle-svg');
-    this.crosshairPriceLabel = page.locator('.crosshair-price-label');
+    this.crosshairPriceLabel = page.locator('.crosshair-tracking-price');
     this.crosshairDateLabel = page.locator('.crosshair-date-label');
     this.selectedSymbolHeading = page.locator('h2');
     this.errorBanner = page.locator('.error-banner');

@@ -110,6 +110,8 @@ export default function Home() {
   const [history, setHistory] = useState<History | null>(null);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [symbolInput, setSymbolInput] = useState("");
   const [adding, setAdding] = useState(false);
@@ -310,11 +312,17 @@ export default function Home() {
           {loadingChart ? (
             <div className="chart-placeholder">Loading price history…</div>
           ) : candles.length > 0 ? (
-            <CandleChart candles={candles} symbol={selected} />
+            <CandleChart
+              candles={candles}
+              hoverIndex={hoverIndex}
+              hoverPrice={hoverPrice}
+              setHoverIndex={setHoverIndex}
+              setHoverPrice={setHoverPrice}
+            />
           ) : (
             <div className="chart-placeholder">No price history is available.</div>
           )}
-          <PriceAxis candles={candles} loading={loadingChart} />
+          <PriceAxis candles={candles} loading={loadingChart} hoverPrice={hoverPrice} symbol={selected} />
         </section>
 
         <section className="macd-chart" aria-label="MACD indicator">
@@ -330,7 +338,7 @@ export default function Home() {
               </>
             )}
           </div>
-          <MacdChart candles={candles} />
+          <MacdChart candles={candles} hoverIndex={hoverIndex} />
           <div className="empty-axis" />
         </section>
 
@@ -344,7 +352,7 @@ export default function Home() {
               </>
             )}
           </div>
-          <RsiChart candles={candles} />
+          <RsiChart candles={candles} hoverIndex={hoverIndex} />
           <div className="rsi-axis">
             <span className="rsi-level rsi-current">{candles[candles.length - 1]?.rsi_14?.toFixed(2) ?? "—"}</span>
             <span className="rsi-level rsi-average">{candles.length > 1 ? candles[candles.length - 2]?.rsi_14?.toFixed(2) ?? "—" : "—"}</span>
@@ -391,7 +399,19 @@ function footerDate(candles: Candle[]) {
   return `${first.toLocaleDateString("en-US", { month: "short" }).toUpperCase()} · ${last.getFullYear()} · ${last.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}`;
 }
 
-function CandleChart({ candles, symbol }: { candles: Candle[]; symbol: string }) {
+function CandleChart({
+  candles,
+  hoverIndex,
+  hoverPrice,
+  setHoverIndex,
+  setHoverPrice,
+}: {
+  candles: Candle[];
+  hoverIndex: number | null;
+  hoverPrice: number | null;
+  setHoverIndex: (index: number | null) => void;
+  setHoverPrice: (price: number | null) => void;
+}) {
   const width = 1000;
   const height = 330;
   const priceBottom = 330;
@@ -412,9 +432,6 @@ function CandleChart({ candles, symbol }: { candles: Candle[]; symbol: string })
   const levels = Array.from({ length: 6 }, (_, index) => upper - ((upper - lower) * index) / 5);
   const averagePath = (key: (typeof AVERAGES)[number]["key"]) =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
-
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
 
   function onMouseMove(event: React.MouseEvent<SVGSVGElement>) {
     const svg = event.currentTarget;
@@ -496,31 +513,23 @@ function CandleChart({ candles, symbol }: { candles: Candle[]; symbol: string })
             y2={y(hoverPrice)}
             className="crosshair-line"
           />
-          <text
-            className="crosshair-label crosshair-price-label"
-            x={width - 6}
-            y={Math.max(13, Math.min(height - 13, y(hoverPrice)))}
-            textAnchor="end"
-            dominantBaseline="middle"
-          >
-            {priceLabel(hoverPrice, symbol)}
-          </text>
-          <text
-            className="crosshair-label crosshair-date-label"
-            x={Math.max(22, Math.min(width - 22, x(hoverIndex)))}
-            y={height - 6}
-            textAnchor="middle"
-            dominantBaseline="alphabetic"
-          >
-            {dateLabel(candles[hoverIndex].date)}
-          </text>
         </>
       )}
     </svg>
   );
 }
 
-function PriceAxis({ candles, loading }: { candles: Candle[]; loading: boolean }) {
+function PriceAxis({
+  candles,
+  loading,
+  hoverPrice,
+  symbol,
+}: {
+  candles: Candle[];
+  loading: boolean;
+  hoverPrice: number | null;
+  symbol: string;
+}) {
   if (loading || !candles.length) return <div className="price-axis" />;
   const height = 330;
   const priceBottom = 255;
@@ -530,6 +539,9 @@ function PriceAxis({ candles, loading }: { candles: Candle[]; loading: boolean }
   const lower = min - padding;
   const upper = max + padding;
   const place = (value: number) => 8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
+  // Same y-scale as the candle chart so the tracking label aligns with the horizontal line.
+  const placeTracking = (value: number) =>
+    8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
   const labels = [
     ...AVERAGES.map((average) => ({
       value: candles[candles.length - 1][average.key],
@@ -556,19 +568,33 @@ function PriceAxis({ candles, loading }: { candles: Candle[]; loading: boolean }
           {label.value.toFixed(2)}
         </span>
       ))}
+      {hoverPrice !== null && (
+        <span
+          className="axis-tag crosshair-tracking-price"
+          key="tracking-price"
+          title="Tracking price"
+          style={{
+            top: `${(placeTracking(hoverPrice) / height) * 100}%`,
+            backgroundColor: "#5b5b66",
+          }}
+        >
+          {priceLabel(hoverPrice, symbol)}
+        </span>
+      )}
     </div>
   );
 }
 
-function MacdChart({ candles }: { candles: Candle[] }) {
+function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
   const width = 1000;
   const height = 130;
-  const paddingX = 2;
+  const candleMargin = 8;
   const values = candles.flatMap((candle) => [candle.macd, candle.macd_signal, candle.macd_hist]);
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const padding = (max - min || 1) * 0.12;
-  const x = (index: number) => paddingX + (index / Math.max(candles.length - 1, 1)) * (width - paddingX * 2);
+  const x = (index: number) =>
+    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
   const y = (value: number) => 8 + ((max + padding - value) / (max - min + 2 * padding)) * (height - 16);
   const path = (key: "macd" | "macd_signal") =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
@@ -595,14 +621,25 @@ function MacdChart({ candles }: { candles: Candle[] }) {
       })}
       <path d={path("macd")} fill="none" stroke="#1d6fe0" strokeWidth="1.7" />
       <path d={path("macd_signal")} fill="none" stroke="#be123c" strokeWidth="1.5" />
+      {hoverIndex !== null && (
+        <line
+          x1={x(hoverIndex)}
+          x2={x(hoverIndex)}
+          y1={0}
+          y2={height}
+          className="crosshair-line"
+        />
+      )}
     </svg>
   );
 }
 
-function RsiChart({ candles }: { candles: Candle[] }) {
+function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
   const width = 1000;
   const height = 170;
-  const x = (index: number) => (index / Math.max(candles.length - 1, 1)) * width;
+  const candleMargin = 8;
+  const x = (index: number) =>
+    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
   const y = (value: number) => 8 + ((100 - value) / 100) * (height - 16);
   const points = candles
     .map((candle, index) => candle.rsi_14 === null ? null : [index, candle.rsi_14] as const)
@@ -621,6 +658,26 @@ function RsiChart({ candles }: { candles: Candle[] }) {
       {[30, 70].map((value) => <line key={value} x1="0" x2={width} y1={y(value)} y2={y(value)} className="rsi-guide" />)}
       <path d={signalLine} fill="none" stroke="#a16207" strokeWidth="1.4" />
       <path d={line} fill="none" stroke="#6d28d9" strokeWidth="1.7" />
+      {hoverIndex !== null && (
+        <>
+          <line
+            x1={x(hoverIndex)}
+            x2={x(hoverIndex)}
+            y1={0}
+            y2={height}
+            className="crosshair-line"
+          />
+          <text
+            className="crosshair-label crosshair-date-label"
+            x={Math.max(22, Math.min(width - 22, x(hoverIndex)))}
+            y={height - 6}
+            textAnchor="middle"
+            dominantBaseline="alphabetic"
+          >
+            {dateLabel(candles[hoverIndex].date)}
+          </text>
+        </>
+      )}
     </svg>
   );
 }
