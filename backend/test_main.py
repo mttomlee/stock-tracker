@@ -1,11 +1,14 @@
+import os
+import tempfile
 import unittest
 from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
 from fastapi import HTTPException
 
-from backend.main import get_stock_history, history_payload, weekly_window
+from backend.main import AddSymbol, add_symbol, get_stock_history, history_payload, weekly_window
 
 
 class MarketDataTests(unittest.TestCase):
@@ -102,6 +105,46 @@ class MarketDataTests(unittest.TestCase):
             weekly_window(frame, "2021-01-01")
 
         self.assertEqual(error.exception.status_code, 404)
+
+
+class WatchlistAddTests(unittest.TestCase):
+    def test_add_symbol_returns_quote_with_current_price(self):
+        frame = pd.DataFrame(
+            {
+                "Open": [100.0, 101.0],
+                "High": [102.0, 103.0],
+                "Low": [99.0, 100.0],
+                "Close": [100.0, 101.0],
+                "Volume": [1000, 1100],
+            },
+            index=pd.date_range("2025-01-01", periods=2),
+        )
+        with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            with (
+                patch("backend.main.watchlist", ["TSM"]),
+                patch("backend.main._download", return_value=frame),
+                patch("backend.main.fetch_symbol_info", return_value=("New Co", "NASDAQ")),
+                patch("backend.main.WATCHLIST_PATH", Path(tmp_path)),
+            ):
+                result = add_symbol(AddSymbol(symbol="NEW"))
+        finally:
+            os.unlink(tmp_path)
+
+        self.assertEqual(
+            result,
+            {
+                "quote": {
+                    "symbol": "NEW",
+                    "name": "New Co",
+                    "exchange": "NASDAQ",
+                    "price": 101.0,
+                    "change": 1.0,
+                    "change_percent": 1.0,
+                }
+            },
+        )
 
 
 if __name__ == "__main__":

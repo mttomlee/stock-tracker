@@ -52,6 +52,10 @@ export class WatchlistPage {
     return this.watchRows.filter({ hasText: symbol });
   }
 
+  getRowPrice(symbol: string) {
+    return this.getRowBySymbol(symbol).locator('.watch-row-price b');
+  }
+
   async clickRow(symbol: string) {
     await this.getRowBySymbol(symbol).locator('.watch-row').first().click();
   }

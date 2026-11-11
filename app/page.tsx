@@ -168,21 +168,14 @@ export default function Home() {
     setAdding(true);
     setError("");
     try {
-      const result = await request<{ symbol: string; name: string; exchange: string }>("/api/watchlist/add_symbol", {
+      const result = await request<{ quote: Quote }>("/api/watchlist/add_symbol", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol }),
       });
-      const quote: Quote = {
-        symbol: result.symbol,
-        name: result.name,
-        exchange: result.exchange,
-        price: 0,
-        change: 0,
-        change_percent: 0,
-      };
+      const quote: Quote = result.quote;
       setQuotes((current) => [...current, quote]);
-      setSelected(result.symbol);
+      setSelected(quote.symbol);
       setLoadingChart(rangeIsValid);
       setSymbolInput("");
     } catch (reason) {

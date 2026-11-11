@@ -101,6 +101,11 @@ test.describe('Watchlist & Chart E2E', () => {
     // New symbol added to watchlist
     await expect(pageObj.getRowBySymbol(newSymbol).first()).toBeVisible();
 
+    // Price is fetched and shown, not zero
+    const priceText = await pageObj.getRowPrice(newSymbol).first().textContent();
+    const price = Number((priceText ?? '').replace(/[$,]/g, ''));
+    expect(price).toBeGreaterThan(0);
+
     // Count increased
     await expect.poll(
       async () => {
