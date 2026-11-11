@@ -376,7 +376,7 @@ export default function Home() {
 
         <footer className="chart-footer" style={{ position: "relative" }}>
           <span>Log · Auto</span>
-          {hoverIndex !== null && candles.length > 0 && chartWidth > 0 && (
+          {hoverIndex !== null && candles.length > 0 && (
             <span
               className="axis-tag crosshair-tracking-date"
               style={{
@@ -385,7 +385,7 @@ export default function Home() {
                 left: Math.round(
                   (hoverIndex / Math.max(candles.length - 1, 1)) * chartWidth,
                 ),
-                transform: "translateY(-50%)",
+                transform: "translate(-50%, -50%)",
               }}
             >
               {dateLabel(candles[hoverIndex].date)}
