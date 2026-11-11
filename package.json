@@ -21,6 +21,7 @@
     "concurrently": "^10.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
+    "playwright": "1.65.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
