@@ -409,7 +409,9 @@ function CandleChart({ candles }: { candles: Candle[] }) {
   const padding = (max - min || max * 0.02) * 0.08;
   const lower = min - padding;
   const upper = max + padding;
-  const x = (index: number) => (index / Math.max(candles.length - 1, 1)) * (width - 4) + 2;
+  const candleMargin = 8; // keeps the full first/last candle body and wick inside the border with a small gap
+  const x = (index: number) =>
+    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
   const y = (value: number) => 8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
   const step = width / Math.max(candles.length, 1);
   const bodyWidth = Math.max(2, Math.min(9, step * 0.56));
