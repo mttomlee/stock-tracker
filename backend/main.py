@@ -296,11 +296,13 @@ def add_symbol(request: AddSymbol):
     
     # Fetch name and exchange from yfinance
     name, exchange = fetch_symbol_info(symbol)
-    
-    # Verify symbol has valid market data
+
+    # Verify symbol has valid market data and compute the latest quote
     data = _download(tickers=symbol, period="5d", interval="1d")
-    _latest_quote(data, symbol)
-    
+    quote = _latest_quote(data, symbol)
+    quote["name"] = name
+    quote["exchange"] = exchange
+
     watchlist.append(symbol)
     
     # Save with fetched info
@@ -325,7 +327,7 @@ def add_symbol(request: AddSymbol):
     with open(WATCHLIST_PATH, "w") as f:
         json.dump(data, f, indent=2)
     
-    return {"symbol": symbol, "name": name, "exchange": exchange}
+    return {"quote": quote}
 
 
 @app.delete("/api/watchlist")
