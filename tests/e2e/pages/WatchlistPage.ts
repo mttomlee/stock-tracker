@@ -34,7 +34,7 @@ export class WatchlistPage {
     this.datePickerPopover = page.locator('.date-picker-popover');
     this.chart = page.locator('svg.candle-svg');
     this.crosshairPriceLabel = page.locator('.crosshair-tracking-price');
-    this.crosshairDateLabel = page.locator('.crosshair-date-label');
+    this.crosshairDateLabel = page.locator('.crosshair-tracking-date');
     this.selectedSymbolHeading = page.locator('h2');
     this.errorBanner = page.locator('.error-banner');
   }

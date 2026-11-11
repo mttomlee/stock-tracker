@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import DateRangePicker from "./DateRangePicker";
 
 type Quote = {
@@ -113,6 +113,8 @@ export default function Home() {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const dateContainerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(0);
   const [symbolInput, setSymbolInput] = useState("");
   const [adding, setAdding] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -162,6 +164,19 @@ export default function Home() {
       });
     return () => controller.abort();
   }, [endDate, range, selected, startDate]);
+
+  // Measure the bottom pane's chart area so the tracking date label can be
+  // positioned under the vertical line in the footer row.
+  useEffect(() => {
+    const container = dateContainerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const axisWidth = 72;
+    const update = () => setChartWidth(Math.max(0, container.offsetWidth - axisWidth));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   async function addSymbol(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -342,7 +357,7 @@ export default function Home() {
           <div className="empty-axis" />
         </section>
 
-        <section className="rsi-chart" aria-label="RSI indicator">
+        <section className="rsi-chart" aria-label="RSI indicator" ref={dateContainerRef}>
           <div className="pane-heading">
             <b>RSI</b> 14
             {candles.length > 0 && (
@@ -359,9 +374,23 @@ export default function Home() {
           </div>
         </section>
 
-        <footer className="chart-footer">
-          <span>{footerDate(candles)}</span>
-          <span>17:18 NY · Log · Auto</span>
+        <footer className="chart-footer" style={{ position: "relative" }}>
+          <span>Log · Auto</span>
+          {hoverIndex !== null && candles.length > 0 && chartWidth > 0 && (
+            <span
+              className="axis-tag crosshair-tracking-date"
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: Math.round(
+                  (hoverIndex / Math.max(candles.length - 1, 1)) * chartWidth,
+                ),
+                transform: "translateY(-50%)",
+              }}
+            >
+              {dateLabel(candles[hoverIndex].date)}
+            </span>
+          )}
         </footer>
       </main>
 
@@ -390,13 +419,6 @@ export default function Home() {
       )}
     </div>
   );
-}
-
-function footerDate(candles: Candle[]) {
-  if (!candles.length) return "—";
-  const first = new Date(candles[0].date);
-  const last = new Date(candles[candles.length - 1].date);
-  return `${first.toLocaleDateString("en-US", { month: "short" }).toUpperCase()} · ${last.getFullYear()} · ${last.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}`;
 }
 
 function CandleChart({
@@ -658,24 +680,13 @@ function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: numb
       <path d={signalLine} fill="none" stroke="#a16207" strokeWidth="1.4" />
       <path d={line} fill="none" stroke="#6d28d9" strokeWidth="1.7" />
       {hoverIndex !== null && (
-        <>
-          <line
-            x1={x(hoverIndex)}
-            x2={x(hoverIndex)}
-            y1={0}
-            y2={height}
-            className="crosshair-line"
-          />
-          <text
-            className="crosshair-label crosshair-date-label"
-            x={Math.max(22, Math.min(width - 22, x(hoverIndex)))}
-            y={height - 6}
-            textAnchor="middle"
-            dominantBaseline="alphabetic"
-          >
-            {dateLabel(candles[hoverIndex].date)}
-          </text>
-        </>
+        <line
+          x1={x(hoverIndex)}
+          x2={x(hoverIndex)}
+          y1={0}
+          y2={height}
+          className="crosshair-line"
+        />
       )}
     </svg>
   );

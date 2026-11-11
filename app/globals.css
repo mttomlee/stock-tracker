@@ -688,13 +688,6 @@ input:focus-visible {
   stroke-width: 1;
 }
 
-.crosshair-label {
-  fill: #5b5b66;
-  font: 11px var(--mono);
-  pointer-events: none;
-  user-select: none;
-}
-
 .volume-separator {
   stroke: var(--border);
   stroke-width: 1;
