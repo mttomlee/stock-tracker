@@ -385,7 +385,8 @@ export default function Home() {
                 position: "absolute",
                 top: "50%",
                 left: Math.round(
-                  (hoverIndex / Math.max(candles.length - 1, 1)) * chartWidth,
+                  16 +
+                    (hoverIndex / Math.max(candles.length - 1, 1)) * chartWidth,
                 ),
                 transform: "translate(-50%, -50%)",
               }}
