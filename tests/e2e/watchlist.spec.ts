@@ -12,8 +12,8 @@ async function resetWatchlist() {
 
   // Get current watchlist
   const current = await context.get(`${API_URL}/api/watchlist`);
-  const data = await current.json();
-  const symbols: string[] = data.quotes?.map((q: any) => q.symbol) ?? [];
+  const data = (await current.json()) as { quotes?: { symbol: string }[] };
+  const symbols: string[] = data.quotes?.map((quote) => quote.symbol) ?? [];
 
   // Remove all current symbols (deduplicate to avoid redundant calls)
   for (const symbol of [...new Set(symbols)]) {
@@ -165,5 +165,30 @@ test.describe('Watchlist & Chart E2E', () => {
       await expect(pageObj.chart).toBeVisible();
       break; // Test first available symbol
     }
+  });
+
+  test('chart crosshair tracks the pointer with price and date labels', async () => {
+    await expect(pageObj.chart).toBeVisible();
+
+    // No crosshair labels before hovering
+    await expect(pageObj.crosshairPriceLabel).toBeHidden();
+    await expect(pageObj.crosshairDateLabel).toBeHidden();
+
+    // Hover over the chart: crosshair labels appear
+    await pageObj.chartHoverAt(150, 120);
+    await expect(pageObj.crosshairPriceLabel).toBeVisible();
+    await expect(pageObj.crosshairDateLabel).toBeVisible();
+
+    // Move horizontally: the date label follows the candle under the pointer
+    const firstDate = (await pageObj.crosshairDateLabel.textContent())?.trim();
+    await pageObj.chartHoverAt(450, 120);
+    const secondDate = (await pageObj.crosshairDateLabel.textContent())?.trim();
+    expect(secondDate).toBeTruthy();
+    expect(secondDate).not.toBe(firstDate);
+
+    // Move off the chart: crosshair labels hide again
+    await pageObj.chartHoverLeave();
+    await expect(pageObj.crosshairPriceLabel).toBeHidden();
+    await expect(pageObj.crosshairDateLabel).toBeHidden();
   });
 });

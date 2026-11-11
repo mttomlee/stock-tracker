@@ -15,6 +15,8 @@ export class WatchlistPage {
   readonly dateRangeTrigger: Locator;
   readonly datePickerPopover: Locator;
   readonly chart: Locator;
+  readonly crosshairPriceLabel: Locator;
+  readonly crosshairDateLabel: Locator;
   readonly selectedSymbolHeading: Locator;
   readonly errorBanner: Locator;
 
@@ -31,6 +33,8 @@ export class WatchlistPage {
     this.dateRangeTrigger = page.locator('.date-range-trigger');
     this.datePickerPopover = page.locator('.date-picker-popover');
     this.chart = page.locator('svg.candle-svg');
+    this.crosshairPriceLabel = page.locator('.crosshair-price-label');
+    this.crosshairDateLabel = page.locator('.crosshair-date-label');
     this.selectedSymbolHeading = page.locator('h2');
     this.errorBanner = page.locator('.error-banner');
   }
@@ -84,5 +88,17 @@ export class WatchlistPage {
 
   async closeDatePicker() {
     await this.page.click('body', { position: { x: 10, y: 10 } });
+  }
+
+  async chartHoverAt(x: number, y: number) {
+    const box = await this.chart.boundingBox();
+    if (!box) throw new Error('chart is not visible');
+    await this.page.mouse.move(box.x + x, box.y + y);
+  }
+
+  async chartHoverLeave() {
+    const box = await this.chart.boundingBox();
+    if (!box) throw new Error('chart is not visible');
+    await this.page.mouse.move(box.x - 50, box.y + 50);
   }
 }

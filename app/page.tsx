@@ -310,7 +310,7 @@ export default function Home() {
           {loadingChart ? (
             <div className="chart-placeholder">Loading price history…</div>
           ) : candles.length > 0 ? (
-            <CandleChart candles={candles} />
+            <CandleChart candles={candles} symbol={selected} />
           ) : (
             <div className="chart-placeholder">No price history is available.</div>
           )}
@@ -391,7 +391,7 @@ function footerDate(candles: Candle[]) {
   return `${first.toLocaleDateString("en-US", { month: "short" }).toUpperCase()} · ${last.getFullYear()} · ${last.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}`;
 }
 
-function CandleChart({ candles }: { candles: Candle[] }) {
+function CandleChart({ candles, symbol }: { candles: Candle[]; symbol: string }) {
   const width = 1000;
   const height = 330;
   const priceBottom = 330;
@@ -413,8 +413,43 @@ function CandleChart({ candles }: { candles: Candle[] }) {
   const averagePath = (key: (typeof AVERAGES)[number]["key"]) =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
 
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+
+  function onMouseMove(event: React.MouseEvent<SVGSVGElement>) {
+    const svg = event.currentTarget;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(ctm.inverse());
+    const svgX = svgPoint.x;
+    const svgY = svgPoint.y;
+
+    const index = Math.round(((svgX - candleMargin) / (width - candleMargin * 2)) * (candles.length - 1));
+    setHoverIndex(Math.max(0, Math.min(candles.length - 1, index)));
+
+    const price = upper - ((svgY - 8) / (priceBottom - 12)) * (upper - lower);
+    setHoverPrice(Math.max(lower, Math.min(upper, price)));
+  }
+
+  function onMouseLeave() {
+    setHoverIndex(null);
+    setHoverPrice(null);
+  }
+
   return (
-    <svg className="candle-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Candlestick price chart with volume and four moving averages">
+    <svg
+      className="candle-svg"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Candlestick price chart with volume and four moving averages"
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      style={{ cursor: "crosshair" }}
+    >
       {levels.map((value, index) => (
         <g key={`level-${index}`}>
           <line x1="0" x2={width} y1={y(value)} y2={y(value)} className="chart-grid" />
@@ -445,16 +480,41 @@ function CandleChart({ candles }: { candles: Candle[] }) {
       {AVERAGES.map(({ key, color }) => (
         <path key={key} d={averagePath(key)} fill="none" stroke={color} strokeWidth="1.25" />
       ))}
-      {candles.length > 1 && (
-        <line
-          x1="0"
-          x2={width}
-          y1={y(candles[candles.length - 1].close)}
-          y2={y(candles[candles.length - 1].close)}
-          stroke="#5b5b66"
-          strokeDasharray="3 3"
-          strokeWidth="1"
-        />
+      {hoverIndex !== null && hoverPrice !== null && (
+        <>
+          <line
+            x1={x(hoverIndex)}
+            x2={x(hoverIndex)}
+            y1={8}
+            y2={height}
+            className="crosshair-line"
+          />
+          <line
+            x1="0"
+            x2={width}
+            y1={y(hoverPrice)}
+            y2={y(hoverPrice)}
+            className="crosshair-line"
+          />
+          <text
+            className="crosshair-label crosshair-price-label"
+            x={width - 6}
+            y={Math.max(13, Math.min(height - 13, y(hoverPrice)))}
+            textAnchor="end"
+            dominantBaseline="middle"
+          >
+            {priceLabel(hoverPrice, symbol)}
+          </text>
+          <text
+            className="crosshair-label crosshair-date-label"
+            x={Math.max(22, Math.min(width - 22, x(hoverIndex)))}
+            y={height - 6}
+            textAnchor="middle"
+            dominantBaseline="alphabetic"
+          >
+            {dateLabel(candles[hoverIndex].date)}
+          </text>
+        </>
       )}
     </svg>
   );
