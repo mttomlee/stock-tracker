@@ -113,7 +113,7 @@ export default function Home() {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const dateContainerRef = useRef<HTMLDivElement>(null);
+  const chartSectionRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState(0);
   const [symbolInput, setSymbolInput] = useState("");
   const [adding, setAdding] = useState(false);
@@ -165,16 +165,18 @@ export default function Home() {
     return () => controller.abort();
   }, [endDate, range, selected, startDate]);
 
-  // Measure the bottom pane's chart area so the tracking date label can be
-  // positioned under the vertical line in the footer row.
+  // Measure the chart area (excluding the 72px right axis column) so the
+  // tracking date label can be positioned under the vertical line in the
+  // footer row. The footer spans full width while the chart SVG occupies
+  // minmax(0, 1fr) of each section's grid, so pixel positioning needs the
+  // measured chart width.
   useEffect(() => {
-    const container = dateContainerRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
-    const axisWidth = 72;
-    const update = () => setChartWidth(Math.max(0, container.offsetWidth - axisWidth));
+    const el = chartSectionRef.current;
+    if (!el) return;
+    const update = () => setChartWidth(Math.max(0, el.offsetWidth - 72));
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(container);
+    observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
@@ -357,7 +359,7 @@ export default function Home() {
           <div className="empty-axis" />
         </section>
 
-        <section className="rsi-chart" aria-label="RSI indicator" ref={dateContainerRef}>
+        <section className="rsi-chart" aria-label="RSI indicator" ref={chartSectionRef}>
           <div className="pane-heading">
             <b>RSI</b> 14
             {candles.length > 0 && (
