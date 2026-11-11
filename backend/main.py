@@ -64,7 +64,8 @@ def save_watchlist(symbols: list[str]) -> None:
                 name, exchange = STOCK_NAMES.get(sym, (sym, "MARKET"))
                 new_tickets.append({"symbol": sym, "ticketName": name, "exchange": exchange})
         data[0]["tickets"] = new_tickets
-    
+
+    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(WATCHLIST_PATH, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -319,7 +320,8 @@ def add_symbol(request: AddSymbol):
                 n, ex = fetch_symbol_info(sym)
                 new_tickets.append({"symbol": sym, "ticketName": n, "exchange": ex})
         data[0]["tickets"] = new_tickets
-    
+
+    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(WATCHLIST_PATH, "w") as f:
         json.dump(data, f, indent=2)
     
