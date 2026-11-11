@@ -43,3 +43,6 @@ next-env.d.ts
 
 # python
 **/__pycache__/
+
+# Agents
+AGENTS.md
