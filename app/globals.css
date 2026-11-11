@@ -217,6 +217,7 @@ input:focus-visible {
   position: absolute;
   top: 50%;
   right: 7px;
+  display: none;
   width: 25px;
   height: 25px;
   transform: translateY(-50%);
@@ -226,6 +227,10 @@ input:focus-visible {
   color: var(--muted);
   font-size: 18px;
   line-height: 1;
+}
+
+.watch-row-wrap:hover .remove-symbol,
+.remove-symbol:focus-visible {
   display: grid;
   place-items: center;
 }
@@ -234,8 +239,7 @@ input:focus-visible {
   color: var(--ink);
 }
 
-.watch-row-wrap:focus-within .remove-symbol,
-.remove-symbol:focus-visible {
+.watch-row-wrap:focus-within .remove-symbol {
   color: #d6336c;
 }
 
