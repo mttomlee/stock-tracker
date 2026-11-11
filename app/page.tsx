@@ -532,16 +532,15 @@ function PriceAxis({
 }) {
   if (loading || !candles.length) return <div className="price-axis" />;
   const height = 330;
-  const priceBottom = 255;
+  const priceBottom = 330;
   const min = Math.min(...candles.map((candle) => candle.low));
   const max = Math.max(...candles.map((candle) => candle.high));
   const padding = (max - min || max * 0.02) * 0.08;
   const lower = min - padding;
   const upper = max + padding;
+  // Same y-scale as the candle chart so all price labels align with the
+  // grid lines and the horizontal tracking line.
   const place = (value: number) => 8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
-  // Same y-scale as the candle chart so the tracking label aligns with the horizontal line.
-  const placeTracking = (value: number) =>
-    8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
   const labels = [
     ...AVERAGES.map((average) => ({
       value: candles[candles.length - 1][average.key],
@@ -574,7 +573,7 @@ function PriceAxis({
           key="tracking-price"
           title="Tracking price"
           style={{
-            top: `${(placeTracking(hoverPrice) / height) * 100}%`,
+            top: `${(place(hoverPrice) / height) * 100}%`,
             backgroundColor: "#5b5b66",
           }}
         >
