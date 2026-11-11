@@ -316,7 +316,8 @@ def add_symbol(request: AddSymbol):
             if sym in existing_tickets:
                 new_tickets.append(existing_tickets[sym])
             else:
-                new_tickets.append({"symbol": sym, "ticketName": name, "exchange": exchange})
+                n, ex = fetch_symbol_info(sym)
+                new_tickets.append({"symbol": sym, "ticketName": n, "exchange": ex})
         data[0]["tickets"] = new_tickets
     
     with open(WATCHLIST_PATH, "w") as f:

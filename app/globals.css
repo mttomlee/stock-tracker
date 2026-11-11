@@ -235,6 +235,14 @@ input:focus-visible {
   place-items: center;
 }
 
+.watch-row-wrap:hover .remove-symbol {
+  color: var(--ink);
+}
+
+.watch-row-wrap:focus-within .remove-symbol {
+  color: #d6336c;
+}
+
 .watch-row-wrap:hover .watch-row-price {
   visibility: hidden;
 }

@@ -13,6 +13,11 @@
 # testing
 /coverage
 
+# playwright
+/test-results/
+/playwright-report/
+/tests/e2e/artifacts/
+
 # next.js
 /.next/
 /out/
@@ -40,6 +45,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# data (local use only, not tracked)
+/data/
 
 # python
 **/__pycache__/

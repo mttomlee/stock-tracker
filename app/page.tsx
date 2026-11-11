@@ -185,11 +185,11 @@ export default function Home() {
       setSelected(result.symbol);
       setLoadingChart(rangeIsValid);
       setSymbolInput("");
-      setShowAdd(false);
     } catch (reason) {
       setError(`Could not add ${symbol}: ${(reason as Error).message}`);
     } finally {
       setAdding(false);
+      setShowAdd(false);
     }
   }
 
