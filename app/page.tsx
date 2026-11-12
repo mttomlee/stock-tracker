@@ -389,6 +389,7 @@ export default function Home() {
                     (hoverIndex / Math.max(candles.length - 1, 1)) * chartWidth,
                 ),
                 transform: "translate(-50%, -50%)",
+                backgroundColor: "#5b5b66",
               }}
             >
               {dateLabel(candles[hoverIndex].date)}
