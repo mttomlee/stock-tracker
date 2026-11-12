@@ -682,6 +682,12 @@ input:focus-visible {
   stroke-width: 1;
 }
 
+.crosshair-line {
+  stroke: #5b5b66;
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
 .volume-separator {
   stroke: var(--border);
   stroke-width: 1;

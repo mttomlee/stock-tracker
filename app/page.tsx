@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import DateRangePicker from "./DateRangePicker";
 
 type Quote = {
@@ -110,7 +110,11 @@ export default function Home() {
   const [history, setHistory] = useState<History | null>(null);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const chartSectionRef = useRef<HTMLDivElement>(null);
+  const dateLabelRef = useRef<HTMLSpanElement>(null);
   const [symbolInput, setSymbolInput] = useState("");
   const [adding, setAdding] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -161,6 +165,7 @@ export default function Home() {
     return () => controller.abort();
   }, [endDate, range, selected, startDate]);
 
+  // Measure the chart area (excluding the 72px right axis column) so the
   async function addSymbol(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const symbol = symbolInput.trim().toUpperCase();
@@ -212,6 +217,31 @@ export default function Home() {
       : error;
   const defaultStart = candles[0]?.date.slice(0, 10) ?? "";
   const defaultEnd = candles[candles.length - 1]?.date.slice(0, 10) ?? "";
+
+  // Position of the vertical crosshair line in screen coordinates, reported
+  // directly by the rendered <line> element in CandleChart. The date label
+  // locks to this value so its center always sits exactly on the line.
+  const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [dateLabelLeft, setDateLabelLeft] = useState(0);
+
+  // Recompute the label's left offset whenever the line moves. The label is
+  // absolutely positioned inside the footer (position: relative), so its
+  // left edge = footerLeft + dateLabelLeft. With no translate(-50%), the
+  // label's center is at footerLeft + dateLabelLeft + labelWidth/2. We set
+  // dateLabelLeft so that center equals the line's screen center X.
+  useEffect(() => {
+    if (crosshairLineScreenX === null) return;
+    const footer = footerRef.current;
+    const label = dateLabelRef.current;
+    if (!footer || !label) return;
+    const footerRect = footer.getBoundingClientRect();
+    const labelWidth = label.offsetWidth;
+    let left = crosshairLineScreenX - footerRect.left - labelWidth / 2;
+    // Clamp so the label never spills left into the sidebar/watchlist section.
+    left = Math.max(left, 8);
+    setDateLabelLeft(left);
+  }, [crosshairLineScreenX]);
 
   return (
     <div className="app">
@@ -310,11 +340,18 @@ export default function Home() {
           {loadingChart ? (
             <div className="chart-placeholder">Loading price history…</div>
           ) : candles.length > 0 ? (
-            <CandleChart candles={candles} />
+            <CandleChart
+              candles={candles}
+              hoverIndex={hoverIndex}
+              hoverPrice={hoverPrice}
+              setHoverIndex={setHoverIndex}
+              setHoverPrice={setHoverPrice}
+              onLinePosition={setCrosshairLineScreenX}
+            />
           ) : (
             <div className="chart-placeholder">No price history is available.</div>
           )}
-          <PriceAxis candles={candles} loading={loadingChart} />
+          <PriceAxis candles={candles} loading={loadingChart} hoverPrice={hoverPrice} symbol={selected} />
         </section>
 
         <section className="macd-chart" aria-label="MACD indicator">
@@ -330,11 +367,11 @@ export default function Home() {
               </>
             )}
           </div>
-          <MacdChart candles={candles} />
+          <MacdChart candles={candles} hoverIndex={hoverIndex} />
           <div className="empty-axis" />
         </section>
 
-        <section className="rsi-chart" aria-label="RSI indicator">
+        <section className="rsi-chart" aria-label="RSI indicator" ref={chartSectionRef}>
           <div className="pane-heading">
             <b>RSI</b> 14
             {candles.length > 0 && (
@@ -344,16 +381,30 @@ export default function Home() {
               </>
             )}
           </div>
-          <RsiChart candles={candles} />
+          <RsiChart candles={candles} hoverIndex={hoverIndex} />
           <div className="rsi-axis">
             <span className="rsi-level rsi-current">{candles[candles.length - 1]?.rsi_14?.toFixed(2) ?? "—"}</span>
             <span className="rsi-level rsi-average">{candles.length > 1 ? candles[candles.length - 2]?.rsi_14?.toFixed(2) ?? "—" : "—"}</span>
           </div>
         </section>
 
-        <footer className="chart-footer">
-          <span>{footerDate(candles)}</span>
-          <span>17:18 NY · Log · Auto</span>
+        <footer ref={footerRef} className="chart-footer" style={{ position: "relative" }}>
+          <span>Log · Auto</span>
+          {crosshairLineScreenX !== null && candles.length > 0 && (
+            <span
+              ref={dateLabelRef}
+              className="axis-tag crosshair-tracking-date"
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: dateLabelLeft,
+                backgroundColor: "#5b5b66",
+                transition: "left 0.12s ease-out",
+              }}
+            >
+              {dateLabel(candles[hoverIndex ?? 0].date)}
+            </span>
+          )}
         </footer>
       </main>
 
@@ -384,14 +435,21 @@ export default function Home() {
   );
 }
 
-function footerDate(candles: Candle[]) {
-  if (!candles.length) return "—";
-  const first = new Date(candles[0].date);
-  const last = new Date(candles[candles.length - 1].date);
-  return `${first.toLocaleDateString("en-US", { month: "short" }).toUpperCase()} · ${last.getFullYear()} · ${last.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}`;
-}
-
-function CandleChart({ candles }: { candles: Candle[] }) {
+function CandleChart({
+  candles,
+  hoverIndex,
+  hoverPrice,
+  setHoverIndex,
+  setHoverPrice,
+  onLinePosition,
+}: {
+  candles: Candle[];
+  hoverIndex: number | null;
+  hoverPrice: number | null;
+  setHoverIndex: (index: number | null) => void;
+  setHoverPrice: (price: number | null) => void;
+  onLinePosition?: (screenX: number | null) => void;
+}) {
   const width = 1000;
   const height = 330;
   const priceBottom = 330;
@@ -412,9 +470,58 @@ function CandleChart({ candles }: { candles: Candle[] }) {
   const levels = Array.from({ length: 6 }, (_, index) => upper - ((upper - lower) * index) / 5);
   const averagePath = (key: (typeof AVERAGES)[number]["key"]) =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
+  const lineRef = useRef<SVGLineElement | null>(null);
+
+  // Report the actual rendered position of the vertical crosshair line so the
+  // date label can lock to it directly instead of recomputing from hoverIndex.
+  // When hoverIndex clears (mouse left the chart), report null so the label
+  // hides even if Home's onMouseLeave didn't fire.
+  useEffect(() => {
+    if (!onLinePosition) return;
+    if (hoverIndex === null) {
+      onLinePosition(null);
+      return;
+    }
+    if (!lineRef.current) return;
+    const rect = lineRef.current.getBoundingClientRect();
+    onLinePosition(rect.left + rect.width / 2);
+  }, [hoverIndex, onLinePosition]);
+
+  function onMouseMove(event: React.MouseEvent<SVGSVGElement>) {
+    const svg = event.currentTarget;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(ctm.inverse());
+    const svgX = svgPoint.x;
+    const svgY = svgPoint.y;
+
+    const index = Math.round(((svgX - candleMargin) / (width - candleMargin * 2)) * (candles.length - 1));
+    setHoverIndex(Math.max(0, Math.min(candles.length - 1, index)));
+
+    const price = upper - ((svgY - 8) / (priceBottom - 12)) * (upper - lower);
+    setHoverPrice(Math.max(lower, Math.min(upper, price)));
+  }
+
+  function onMouseLeave() {
+    setHoverIndex(null);
+    setHoverPrice(null);
+    if (onLinePosition) onLinePosition(null);
+  }
 
   return (
-    <svg className="candle-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Candlestick price chart with volume and four moving averages">
+    <svg
+      className="candle-svg"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Candlestick price chart with volume and four moving averages"
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      style={{ cursor: "crosshair" }}
+    >
       {levels.map((value, index) => (
         <g key={`level-${index}`}>
           <line x1="0" x2={width} y1={y(value)} y2={y(value)} className="chart-grid" />
@@ -445,30 +552,50 @@ function CandleChart({ candles }: { candles: Candle[] }) {
       {AVERAGES.map(({ key, color }) => (
         <path key={key} d={averagePath(key)} fill="none" stroke={color} strokeWidth="1.25" />
       ))}
-      {candles.length > 1 && (
-        <line
-          x1="0"
-          x2={width}
-          y1={y(candles[candles.length - 1].close)}
-          y2={y(candles[candles.length - 1].close)}
-          stroke="#5b5b66"
-          strokeDasharray="3 3"
-          strokeWidth="1"
-        />
+      {hoverIndex !== null && hoverPrice !== null && (
+        <>
+          <line
+            ref={lineRef}
+            x1={x(hoverIndex)}
+            x2={x(hoverIndex)}
+            y1={8}
+            y2={height}
+            className="crosshair-line"
+          />
+          <line
+            x1="0"
+            x2={width}
+            y1={y(hoverPrice)}
+            y2={y(hoverPrice)}
+            className="crosshair-line"
+          />
+        </>
       )}
     </svg>
   );
 }
 
-function PriceAxis({ candles, loading }: { candles: Candle[]; loading: boolean }) {
+function PriceAxis({
+  candles,
+  loading,
+  hoverPrice,
+  symbol,
+}: {
+  candles: Candle[];
+  loading: boolean;
+  hoverPrice: number | null;
+  symbol: string;
+}) {
   if (loading || !candles.length) return <div className="price-axis" />;
   const height = 330;
-  const priceBottom = 255;
+  const priceBottom = 330;
   const min = Math.min(...candles.map((candle) => candle.low));
   const max = Math.max(...candles.map((candle) => candle.high));
   const padding = (max - min || max * 0.02) * 0.08;
   const lower = min - padding;
   const upper = max + padding;
+  // Same y-scale as the candle chart so all price labels align with the
+  // grid lines and the horizontal tracking line.
   const place = (value: number) => 8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
   const labels = [
     ...AVERAGES.map((average) => ({
@@ -496,19 +623,33 @@ function PriceAxis({ candles, loading }: { candles: Candle[]; loading: boolean }
           {label.value.toFixed(2)}
         </span>
       ))}
+      {hoverPrice !== null && (
+        <span
+          className="axis-tag crosshair-tracking-price"
+          key="tracking-price"
+          title="Tracking price"
+          style={{
+            top: `${(place(hoverPrice) / height) * 100}%`,
+            backgroundColor: "#5b5b66",
+          }}
+        >
+          {priceLabel(hoverPrice, symbol)}
+        </span>
+      )}
     </div>
   );
 }
 
-function MacdChart({ candles }: { candles: Candle[] }) {
+function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
   const width = 1000;
   const height = 130;
-  const paddingX = 2;
+  const candleMargin = 8;
   const values = candles.flatMap((candle) => [candle.macd, candle.macd_signal, candle.macd_hist]);
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const padding = (max - min || 1) * 0.12;
-  const x = (index: number) => paddingX + (index / Math.max(candles.length - 1, 1)) * (width - paddingX * 2);
+  const x = (index: number) =>
+    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
   const y = (value: number) => 8 + ((max + padding - value) / (max - min + 2 * padding)) * (height - 16);
   const path = (key: "macd" | "macd_signal") =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
@@ -535,14 +676,25 @@ function MacdChart({ candles }: { candles: Candle[] }) {
       })}
       <path d={path("macd")} fill="none" stroke="#1d6fe0" strokeWidth="1.7" />
       <path d={path("macd_signal")} fill="none" stroke="#be123c" strokeWidth="1.5" />
+      {hoverIndex !== null && (
+        <line
+          x1={x(hoverIndex)}
+          x2={x(hoverIndex)}
+          y1={0}
+          y2={height}
+          className="crosshair-line"
+        />
+      )}
     </svg>
   );
 }
 
-function RsiChart({ candles }: { candles: Candle[] }) {
+function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
   const width = 1000;
   const height = 170;
-  const x = (index: number) => (index / Math.max(candles.length - 1, 1)) * width;
+  const candleMargin = 8;
+  const x = (index: number) =>
+    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
   const y = (value: number) => 8 + ((100 - value) / 100) * (height - 16);
   const points = candles
     .map((candle, index) => candle.rsi_14 === null ? null : [index, candle.rsi_14] as const)
@@ -561,6 +713,15 @@ function RsiChart({ candles }: { candles: Candle[] }) {
       {[30, 70].map((value) => <line key={value} x1="0" x2={width} y1={y(value)} y2={y(value)} className="rsi-guide" />)}
       <path d={signalLine} fill="none" stroke="#a16207" strokeWidth="1.4" />
       <path d={line} fill="none" stroke="#6d28d9" strokeWidth="1.7" />
+      {hoverIndex !== null && (
+        <line
+          x1={x(hoverIndex)}
+          x2={x(hoverIndex)}
+          y1={0}
+          y2={height}
+          className="crosshair-line"
+        />
+      )}
     </svg>
   );
 }
