@@ -115,6 +115,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const chartSectionRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState(0);
+  const dateLabelRef = useRef<HTMLSpanElement>(null);
   const [symbolInput, setSymbolInput] = useState("");
   const [adding, setAdding] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -231,6 +232,19 @@ export default function Home() {
       : error;
   const defaultStart = candles[0]?.date.slice(0, 10) ?? "";
   const defaultEnd = candles[candles.length - 1]?.date.slice(0, 10) ?? "";
+
+  // Position the tracking date label so its center sits on the vertical
+  // crosshair line. Mirror the candle chart's x-scale: SVG viewBox 0-1000
+  // with candleMargin 8 on each side.
+  const fraction = (hoverIndex ?? 0) / Math.max(candles.length - 1, 1);
+  const svgX = ((8 + fraction * 984) / 1000) * chartWidth;
+  // Footer padding-left is 16px; with translate(-50%) the label's center
+  // lands at 16 + left, so subtract 16 to align with svgX.
+  let dateLabelLeft = Math.round(svgX - 16);
+  // Clamp so the label never spills left into the sidebar / watchlist
+  // section (its left edge stays at or past the chart's left edge).
+  // Date labels are short (~64px max); half-width minus footer padding.
+  dateLabelLeft = Math.max(dateLabelLeft, 64 / 2 - 16);
 
   return (
     <div className="app">
@@ -380,16 +394,15 @@ export default function Home() {
           <span>Log · Auto</span>
           {hoverIndex !== null && candles.length > 0 && (
             <span
+              ref={dateLabelRef}
               className="axis-tag crosshair-tracking-date"
               style={{
                 position: "absolute",
                 top: "50%",
-                left: Math.round(
-                  16 +
-                    (hoverIndex / Math.max(candles.length - 1, 1)) * chartWidth,
-                ),
+                left: dateLabelLeft,
                 transform: "translate(-50%, -50%)",
                 backgroundColor: "#5b5b66",
+                transition: "left 0.12s ease-out",
               }}
             >
               {dateLabel(candles[hoverIndex].date)}
