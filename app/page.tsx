@@ -114,7 +114,6 @@ export default function Home() {
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [error, setError] = useState("");
   const chartSectionRef = useRef<HTMLDivElement>(null);
-  const [chartWidth, setChartWidth] = useState(0);
   const dateLabelRef = useRef<HTMLSpanElement>(null);
   const [symbolInput, setSymbolInput] = useState("");
   const [adding, setAdding] = useState(false);
@@ -167,20 +166,6 @@ export default function Home() {
   }, [endDate, range, selected, startDate]);
 
   // Measure the chart area (excluding the 72px right axis column) so the
-  // tracking date label can be positioned under the vertical line in the
-  // footer row. The footer spans full width while the chart SVG occupies
-  // minmax(0, 1fr) of each section's grid, so pixel positioning needs the
-  // measured chart width.
-  useEffect(() => {
-    const el = chartSectionRef.current;
-    if (!el) return;
-    const update = () => setChartWidth(Math.max(0, el.offsetWidth - 72));
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
   async function addSymbol(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const symbol = symbolInput.trim().toUpperCase();
@@ -233,18 +218,30 @@ export default function Home() {
   const defaultStart = candles[0]?.date.slice(0, 10) ?? "";
   const defaultEnd = candles[candles.length - 1]?.date.slice(0, 10) ?? "";
 
-  // Position the tracking date label so its center sits on the vertical
-  // crosshair line. Mirror the candle chart's x-scale: SVG viewBox 0-1000
-  // with candleMargin 8 on each side.
-  const fraction = (hoverIndex ?? 0) / Math.max(candles.length - 1, 1);
-  const svgX = ((8 + fraction * 984) / 1000) * chartWidth;
-  // Footer padding-left is 16px; with translate(-50%) the label's center
-  // lands at 16 + left, so subtract 16 to align with svgX.
-  let dateLabelLeft = Math.round(svgX - 16);
-  // Clamp so the label never spills left into the sidebar / watchlist
-  // section (its left edge stays at or past the chart's left edge).
-  // Date labels are short (~64px max); half-width minus footer padding.
-  dateLabelLeft = Math.max(dateLabelLeft, 64 / 2 - 16);
+  // Position of the vertical crosshair line in screen coordinates, reported
+  // directly by the rendered <line> element in CandleChart. The date label
+  // locks to this value so its center always sits exactly on the line.
+  const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [dateLabelLeft, setDateLabelLeft] = useState(0);
+
+  // Recompute the label's left offset whenever the line moves. The label is
+  // absolutely positioned inside the footer (position: relative), so its
+  // left edge = footerLeft + dateLabelLeft. With no translate(-50%), the
+  // label's center is at footerLeft + dateLabelLeft + labelWidth/2. We set
+  // dateLabelLeft so that center equals the line's screen center X.
+  useEffect(() => {
+    if (crosshairLineScreenX === null) return;
+    const footer = footerRef.current;
+    const label = dateLabelRef.current;
+    if (!footer || !label) return;
+    const footerRect = footer.getBoundingClientRect();
+    const labelWidth = label.offsetWidth;
+    let left = crosshairLineScreenX - footerRect.left - labelWidth / 2;
+    // Clamp so the label never spills left into the sidebar/watchlist section.
+    left = Math.max(left, 8);
+    setDateLabelLeft(left);
+  }, [crosshairLineScreenX]);
 
   return (
     <div className="app">
@@ -349,6 +346,7 @@ export default function Home() {
               hoverPrice={hoverPrice}
               setHoverIndex={setHoverIndex}
               setHoverPrice={setHoverPrice}
+              onLinePosition={setCrosshairLineScreenX}
             />
           ) : (
             <div className="chart-placeholder">No price history is available.</div>
@@ -390,9 +388,9 @@ export default function Home() {
           </div>
         </section>
 
-        <footer className="chart-footer" style={{ position: "relative" }}>
+        <footer ref={footerRef} className="chart-footer" style={{ position: "relative" }}>
           <span>Log · Auto</span>
-          {hoverIndex !== null && candles.length > 0 && (
+          {crosshairLineScreenX !== null && candles.length > 0 && (
             <span
               ref={dateLabelRef}
               className="axis-tag crosshair-tracking-date"
@@ -400,12 +398,11 @@ export default function Home() {
                 position: "absolute",
                 top: "50%",
                 left: dateLabelLeft,
-                transform: "translate(-50%, -50%)",
                 backgroundColor: "#5b5b66",
                 transition: "left 0.12s ease-out",
               }}
             >
-              {dateLabel(candles[hoverIndex].date)}
+              {dateLabel(candles[hoverIndex ?? 0].date)}
             </span>
           )}
         </footer>
@@ -444,12 +441,14 @@ function CandleChart({
   hoverPrice,
   setHoverIndex,
   setHoverPrice,
+  onLinePosition,
 }: {
   candles: Candle[];
   hoverIndex: number | null;
   hoverPrice: number | null;
   setHoverIndex: (index: number | null) => void;
   setHoverPrice: (price: number | null) => void;
+  onLinePosition?: (screenX: number | null) => void;
 }) {
   const width = 1000;
   const height = 330;
@@ -471,6 +470,22 @@ function CandleChart({
   const levels = Array.from({ length: 6 }, (_, index) => upper - ((upper - lower) * index) / 5);
   const averagePath = (key: (typeof AVERAGES)[number]["key"]) =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
+  const lineRef = useRef<SVGLineElement | null>(null);
+
+  // Report the actual rendered position of the vertical crosshair line so the
+  // date label can lock to it directly instead of recomputing from hoverIndex.
+  // When hoverIndex clears (mouse left the chart), report null so the label
+  // hides even if Home's onMouseLeave didn't fire.
+  useEffect(() => {
+    if (!onLinePosition) return;
+    if (hoverIndex === null) {
+      onLinePosition(null);
+      return;
+    }
+    if (!lineRef.current) return;
+    const rect = lineRef.current.getBoundingClientRect();
+    onLinePosition(rect.left + rect.width / 2);
+  }, [hoverIndex, onLinePosition]);
 
   function onMouseMove(event: React.MouseEvent<SVGSVGElement>) {
     const svg = event.currentTarget;
@@ -493,6 +508,7 @@ function CandleChart({
   function onMouseLeave() {
     setHoverIndex(null);
     setHoverPrice(null);
+    if (onLinePosition) onLinePosition(null);
   }
 
   return (
@@ -539,6 +555,7 @@ function CandleChart({
       {hoverIndex !== null && hoverPrice !== null && (
         <>
           <line
+            ref={lineRef}
             x1={x(hoverIndex)}
             x2={x(hoverIndex)}
             y1={8}
