@@ -2,13 +2,14 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
 import pandas as pd
 import yfinance as yf
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
@@ -32,6 +33,11 @@ STOCK_NAMES = {
 
 WATCHLIST_PATH = Path(__file__).parent.parent / "data" / "watchlist.json"
 
+# Thread-safe watchlist state
+_watchlist_lock = threading.Lock()
+_watchlist: list[str] = []
+
+
 def load_watchlist() -> list[str]:
     """Load symbols from watchlist.json (first watchlist's tickets)."""
     try:
@@ -45,32 +51,60 @@ def load_watchlist() -> list[str]:
     # Fallback to defaults if file missing or corrupt
     return ["TSM", "AAPL", "AMZN", "ARM", "BABA", "BTC-USD", "GOOG", "JPM"]
 
-def save_watchlist(symbols: list[str]) -> None:
-    """Save symbols to watchlist.json, preserving structure."""
-    try:
-        with open(WATCHLIST_PATH, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = [{"watchlistName": "Watchlist 1", "tickets": []}]
-    
-    # Update first watchlist's tickets
-    if data and isinstance(data, list) and len(data) > 0:
-        existing_tickets = {t["symbol"]: t for t in data[0].get("tickets", [])}
-        new_tickets = []
-        for sym in symbols:
-            if sym in existing_tickets:
-                new_tickets.append(existing_tickets[sym])
-            else:
-                name, exchange = STOCK_NAMES.get(sym, (sym, "MARKET"))
-                new_tickets.append({"symbol": sym, "ticketName": name, "exchange": exchange})
-        data[0]["tickets"] = new_tickets
 
-    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(WATCHLIST_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+def _persist_watchlist(symbols: list[str]) -> None:
+    """Persist watchlist symbols to JSON file with thread safety."""
+    with _watchlist_lock:
+        try:
+            with open(WATCHLIST_PATH, "r") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = [{"watchlistName": "Watchlist 1", "tickets": []}]
+
+        # Update first watchlist's tickets
+        if data and isinstance(data, list) and len(data) > 0:
+            existing_tickets = {t["symbol"]: t for t in data[0].get("tickets", [])}
+            new_tickets = []
+            for sym in symbols:
+                if sym in existing_tickets:
+                    new_tickets.append(existing_tickets[sym])
+                else:
+                    name, exchange = STOCK_NAMES.get(sym, (sym, "MARKET"))
+                    new_tickets.append({"symbol": sym, "ticketName": name, "exchange": exchange})
+            data[0]["tickets"] = new_tickets
+
+        WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(WATCHLIST_PATH, "w") as f:
+            json.dump(data, f, indent=2)
+
+
+def _persist_watchlist_with_info(symbols: list[str]) -> None:
+    """Persist watchlist symbols with live-fetched name/exchange info."""
+    with _watchlist_lock:
+        try:
+            with open(WATCHLIST_PATH, "r") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = [{"watchlistName": "Watchlist 1", "tickets": []}]
+
+        if data and isinstance(data, list) and len(data) > 0:
+            existing_tickets = {t["symbol"]: t for t in data[0].get("tickets", [])}
+            new_tickets = []
+            for sym in symbols:
+                if sym in existing_tickets:
+                    new_tickets.append(existing_tickets[sym])
+                else:
+                    name, exchange = fetch_symbol_info(sym)
+                    new_tickets.append({"symbol": sym, "ticketName": name, "exchange": exchange})
+            data[0]["tickets"] = new_tickets
+
+        WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(WATCHLIST_PATH, "w") as f:
+            json.dump(data, f, indent=2)
+
 
 def fetch_symbol_info(symbol: str) -> tuple[str, str]:
-    """Fetch longName and exchange from yfinance. Falls back to STOCK_NAMES or defaults."""
+    """Fetch longName and exchange from yfinance. Falls back to defaults on error."""
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
@@ -82,23 +116,43 @@ def fetch_symbol_info(symbol: str) -> tuple[str, str]:
         elif exchange == "NYQ":
             exchange = "NYSE"
         return name, exchange
-    except Exception:
-        return STOCK_NAMES.get(symbol, (symbol, "MARKET"))
+    except (KeyError, ValueError, ConnectionError, TimeoutError) as exc:
+        logger.warning("Failed to fetch symbol info for %s: %s", symbol, exc)
+        return symbol, "MARKET"
+
 
 app = FastAPI(title="Stockroom API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        origin.strip()
-        for origin in os.getenv(
-            "FRONTEND_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
-        ).split(",")
-        if origin.strip()
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
     ],
-    allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=False,
 )
-watchlist = load_watchlist()
+
+
+def _get_watchlist() -> list[str]:
+    """Thread-safe accessor for the global watchlist."""
+    with _watchlist_lock:
+        return list(_watchlist)
+
+
+def _set_watchlist(symbols: list[str]) -> None:
+    """Thread-safe setter for the global watchlist."""
+    with _watchlist_lock:
+        _watchlist.clear()
+        _watchlist.extend(symbols)
+
+
+# Initialize watchlist on startup
+_set_watchlist(load_watchlist())
 
 
 class AddSymbol(BaseModel):
@@ -113,6 +167,12 @@ class AddSymbol(BaseModel):
         return symbol
 
 
+def _require_csrf(request: Request) -> None:
+    """Require X-Requested-With header for mutating endpoints (CSRF protection)."""
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        raise HTTPException(status_code=403, detail="CSRF protection: missing required header")
+
+
 def _download(*, tickers: list[str] | str, **kwargs) -> pd.DataFrame:
     try:
         return yf.download(
@@ -120,6 +180,7 @@ def _download(*, tickers: list[str] | str, **kwargs) -> pd.DataFrame:
             auto_adjust=True,
             progress=False,
             threads=False,
+            timeout=15,  # 15 second timeout for Yahoo Finance calls
             **kwargs,
         )
     except Exception as exc:
@@ -157,20 +218,29 @@ def _price(value: object) -> float:
 
 def _latest_quote(data: pd.DataFrame, symbol: str) -> dict:
     frame = _frame_for(data, symbol)
-    if len(frame) < 2:
+    if frame.empty:
         raise HTTPException(
             status_code=404, detail=f"No recent market data found for {symbol}."
         )
-    previous = _price(frame["Close"].iloc[-2])
-    current = _price(frame["Close"].iloc[-1])
+    # Allow 1 data point (new/thin symbols) — change is 0 in that case
+    if len(frame) >= 2:
+        previous = _price(frame["Close"].iloc[-2])
+        current = _price(frame["Close"].iloc[-1])
+        change = current - previous
+        change_percent = (current - previous) / previous * 100 if previous else 0.0
+    else:
+        # Only one data point available
+        current = _price(frame["Close"].iloc[-1])
+        change = 0.0
+        change_percent = 0.0
     name, exchange = _symbol_details(symbol)
     return {
         "symbol": symbol,
         "name": name,
         "exchange": exchange,
         "price": current,
-        "change": current - previous,
-        "change_percent": (current - previous) / previous * 100 if previous else 0.0,
+        "change": change,
+        "change_percent": change_percent,
     }
 
 
@@ -271,29 +341,27 @@ def health():
 
 @app.get("/api/watchlist")
 def get_watchlist():
+    watchlist = _get_watchlist()
     data = _download(tickers=watchlist, period="5d", interval="1d", group_by="ticker")
     return {"quotes": [_latest_quote(data, symbol) for symbol in watchlist]}
 
 
 @app.post("/api/watchlist", status_code=201)
-def add_to_watchlist(request: AddSymbol):
-    symbol = request.symbol
-    if symbol in watchlist:
-        raise HTTPException(status_code=409, detail=f"{symbol} is already on your watchlist.")
-    data = _download(tickers=symbol, period="5d", interval="1d")
-    quote = _latest_quote(data, symbol)
-    watchlist.append(symbol)
-    save_watchlist(watchlist)
-    return {"quote": quote}
+def add_to_watchlist(request: AddSymbol, req: Request):
+    """Legacy endpoint — delegates to add_symbol for consistent behavior."""
+    _require_csrf(req)
+    return add_symbol(request, req)
 
 
 @app.post("/api/watchlist/add_symbol", status_code=201)
-def add_symbol(request: AddSymbol):
+def add_symbol(request: AddSymbol, req: Request):
     """Add symbol to watchlist, fetching name and exchange from yfinance."""
+    _require_csrf(req)
     symbol = request.symbol
+    watchlist = _get_watchlist()
     if symbol in watchlist:
         raise HTTPException(status_code=409, detail=f"{symbol} is already on your watchlist.")
-    
+
     # Fetch name and exchange from yfinance
     name, exchange = fetch_symbol_info(symbol)
 
@@ -304,41 +372,27 @@ def add_symbol(request: AddSymbol):
     quote["exchange"] = exchange
 
     watchlist.append(symbol)
-    
-    # Save with fetched info
-    try:
-        with open(WATCHLIST_PATH, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = [{"watchlistName": "Watchlist 1", "tickets": []}]
-    
-    if data and isinstance(data, list) and len(data) > 0:
-        existing_tickets = {t["symbol"]: t for t in data[0].get("tickets", [])}
-        new_tickets = []
-        for sym in watchlist:
-            if sym in existing_tickets:
-                new_tickets.append(existing_tickets[sym])
-            else:
-                n, ex = fetch_symbol_info(sym)
-                new_tickets.append({"symbol": sym, "ticketName": n, "exchange": ex})
-        data[0]["tickets"] = new_tickets
+    _set_watchlist(watchlist)
 
-    WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(WATCHLIST_PATH, "w") as f:
-        json.dump(data, f, indent=2)
-    
+    # Save with fetched info
+    _persist_watchlist_with_info(watchlist)
+
     return {"quote": quote}
 
 
 @app.delete("/api/watchlist")
-def remove_from_watchlist(symbol: str = Query(min_length=1, max_length=20)):
+def remove_from_watchlist(symbol: str = Query(min_length=1, max_length=20), req: Request = None):
+    if req:
+        _require_csrf(req)
     symbol = symbol.strip().upper()
     if not SYMBOL_PATTERN.fullmatch(symbol):
         raise HTTPException(status_code=422, detail="Use a valid ticker symbol.")
+    watchlist = _get_watchlist()
     if symbol not in watchlist:
         raise HTTPException(status_code=404, detail=f"{symbol} is not on your watchlist.")
     watchlist.remove(symbol)
-    save_watchlist(watchlist)
+    _set_watchlist(watchlist)
+    _persist_watchlist(watchlist)
     return {"removed": symbol}
 
 

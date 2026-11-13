@@ -11,7 +11,7 @@ export default defineConfig({
     ['json', { outputFile: 'playwright-results.json' }],
   ],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3002',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -24,10 +24,11 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
-    timeout: 120000,
-  },
+  // Disable webServer - we run dev servers manually
+  // webServer: {
+  //   command: 'npm run dev',
+  //   url: 'http://localhost:3000',
+  //   reuseExistingServer: true,
+  //   timeout: 120000,
+  // },
 });

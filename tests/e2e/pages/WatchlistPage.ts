@@ -90,15 +90,17 @@ export class WatchlistPage {
     await this.page.click('body', { position: { x: 10, y: 10 } });
   }
 
-  async chartHoverAt(x: number, y: number) {
+  async chartHoverAt(xRatio: number, yRatio: number) {
     const box = await this.chart.boundingBox();
     if (!box) throw new Error('chart is not visible');
-    await this.page.mouse.move(box.x + x, box.y + y);
+    const x = box.x + box.width * xRatio;
+    const y = box.y + box.height * yRatio;
+    await this.page.mouse.move(x, y);
   }
 
   async chartHoverLeave() {
     const box = await this.chart.boundingBox();
     if (!box) throw new Error('chart is not visible');
-    await this.page.mouse.move(box.x - 50, box.y + 50);
+    await this.page.mouse.move(box.x - 50, box.y + box.height / 2);
   }
 }

@@ -1,14 +1,16 @@
 import { test, expect, request } from '@playwright/test';
 import { WatchlistPage } from './pages/WatchlistPage';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.API_URL ?? 'http://localhost:8000';
 
 // Known baseline symbols to ensure before each test
 const BASELINE_SYMBOLS = ['TSM', 'AMZN', 'GOOG', 'JPM'];
 
 // Helper: reset watchlist to a known baseline via API
 async function resetWatchlist() {
-  const context = await request.newContext();
+  const context = await request.newContext({
+    extraHTTPHeaders: { 'X-Requested-With': 'XMLHttpRequest' },
+  });
 
   // Get current watchlist
   const current = await context.get(`${API_URL}/api/watchlist`);
@@ -31,6 +33,16 @@ async function resetWatchlist() {
     if (addRes.status() !== 201 && addRes.status() !== 409) {
       throw new Error(`Failed to add ${symbol}: ${addRes.status()}`);
     }
+  }
+
+  // Verify the watchlist matches BASELINE_SYMBOLS
+  const verify = await context.get(`${API_URL}/api/watchlist`);
+  const verifyData = (await verify.json()) as { quotes?: { symbol: string }[] };
+  const verifySymbols = verifyData.quotes?.map((quote) => quote.symbol) ?? [];
+  const sortedBaseline = [...BASELINE_SYMBOLS].sort();
+  const sortedVerify = [...verifySymbols].sort();
+  if (JSON.stringify(sortedVerify) !== JSON.stringify(sortedBaseline)) {
+    throw new Error(`Watchlist verification failed: expected ${JSON.stringify(sortedBaseline)}, got ${JSON.stringify(sortedVerify)}`);
   }
 
   await context.dispose();
@@ -174,14 +186,21 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(pageObj.crosshairPriceLabel).toBeHidden();
     await expect(pageObj.crosshairDateLabel).toBeHidden();
 
-    // Hover over the chart: crosshair labels appear
-    await pageObj.chartHoverAt(150, 120);
+    // Hover over the chart: crosshair labels appear (15% from left, 36% from top)
+    await pageObj.chartHoverAt(0.15, 0.36);
     await expect(pageObj.crosshairPriceLabel).toBeVisible();
-    await expect(pageObj.crosshairDateLabel).toBeVisible();
 
-    // Move horizontally: the date label follows the candle under the pointer
+    // Debug: check if crosshair line exists
+    const crosshairLine = pageObj.page.locator('.crosshair-line');
+    const lineCount = await crosshairLine.count();
+    console.log(`Crosshair lines found: ${lineCount}`);
+
+    // Wait for date label to appear (crosshairLineScreenX is set asynchronously)
+    await expect(pageObj.crosshairDateLabel).toBeVisible({ timeout: 10000 });
+
+    // Move horizontally: the date label follows the candle under the pointer (45% from left)
     const firstDate = (await pageObj.crosshairDateLabel.textContent())?.trim();
-    await pageObj.chartHoverAt(450, 120);
+    await pageObj.chartHoverAt(0.45, 0.36);
     const secondDate = (await pageObj.crosshairDateLabel.textContent())?.trim();
     expect(secondDate).toBeTruthy();
     expect(secondDate).not.toBe(firstDate);
