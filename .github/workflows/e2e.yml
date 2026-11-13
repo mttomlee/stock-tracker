@@ -34,11 +34,11 @@ jobs:
       - name: Start frontend Next.js server
         run: |
           npm run build
-          npm run start &
+          PORT=3002 npm run start &
           echo $! > frontend.pid
           # Wait for frontend to be ready
           for i in {1..30}; do
-            if curl -s http://localhost:3000 > /dev/null; then
+            if curl -s http://localhost:3002 > /dev/null; then
               echo "Frontend ready"
               break
             fi
@@ -47,7 +47,7 @@ jobs:
       - name: Run E2E tests
         run: npx playwright test
         env:
-          BASE_URL: http://localhost:3000
+          BASE_URL: http://localhost:3002
           API_URL: http://localhost:8000
       - name: Stop servers
         if: always()
