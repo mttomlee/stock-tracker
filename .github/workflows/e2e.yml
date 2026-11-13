@@ -19,10 +19,41 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+      - name: Start backend API server
+        run: |
+          python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
+          echo $! > backend.pid
+          # Wait for API to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/api/watchlist > /dev/null; then
+              echo "Backend API ready"
+              break
+            fi
+            sleep 1
+          done
+      - name: Start frontend Next.js server
+        run: |
+          npm run build
+          npm run start &
+          echo $! > frontend.pid
+          # Wait for frontend to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:3000 > /dev/null; then
+              echo "Frontend ready"
+              break
+            fi
+            sleep 1
+          done
       - name: Run E2E tests
         run: npx playwright test
         env:
           BASE_URL: http://localhost:3000
+          API_URL: http://localhost:8000
+      - name: Stop servers
+        if: always()
+        run: |
+          kill $(cat backend.pid 2>/dev/null) 2>/dev/null || true
+          kill $(cat frontend.pid 2>/dev/null) 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
