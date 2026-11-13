@@ -157,6 +157,8 @@ export default function DateRangePicker({
 
   function apply() {
     if (!draftStart || !draftEnd || selectingEnd) return;
+    const today = todayIso || toIsoDate(new Date());
+    if (draftEnd > today) return;
     onApply(draftStart, draftEnd);
     setOpen(false);
   }

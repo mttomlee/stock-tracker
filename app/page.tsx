@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState, Component, ReactNode } from "react";
 import DateRangePicker from "./DateRangePicker";
 
 type Quote = {
@@ -101,6 +101,46 @@ function signed(value: number, suffix = "") {
   return `${sign}${Math.abs(value).toFixed(2)}${suffix}`;
 }
 
+function useChartScale(candles: Candle[]) {
+  const min = Math.min(...candles.map((candle) => candle.low));
+  const max = Math.max(...candles.map((candle) => candle.high));
+  const padding = (max - min || max * 0.02) * 0.08;
+  const lower = min - padding;
+  const upper = max + padding;
+  const priceBottom = 330;
+  const y = (value: number) => 8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
+  return { y, lower, upper, min, max, priceBottom };
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Chart error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div className="chart-error" role="alert">
+          <span>Failed to render chart</span>
+          <button onClick={() => this.setState({ hasError: false, error: null })}>Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function Home() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [selected, setSelected] = useState("TSM");
@@ -166,6 +206,9 @@ export default function Home() {
   }, [endDate, range, selected, startDate]);
 
   // Measure the chart area (excluding the 72px right axis column) so the
+  const rangeIsValid =
+    !(startDate || endDate) || Boolean(startDate && endDate && startDate <= endDate);
+
   async function addSymbol(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const symbol = symbolInput.trim().toUpperCase();
@@ -175,7 +218,7 @@ export default function Home() {
     try {
       const result = await request<{ quote: Quote }>("/api/watchlist/add_symbol", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
         body: JSON.stringify({ symbol }),
       });
       const quote: Quote = result.quote;
@@ -194,7 +237,10 @@ export default function Home() {
   async function removeSymbol(symbol: string) {
     setError("");
     try {
-      await request(`/api/watchlist?${new URLSearchParams({ symbol })}`, { method: "DELETE" });
+      await request(`/api/watchlist?${new URLSearchParams({ symbol })}`, {
+        method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
       const remaining = quotes.filter((quote) => quote.symbol !== symbol);
       setQuotes(remaining);
       if (selected === symbol) {
@@ -209,8 +255,6 @@ export default function Home() {
 
   const activeQuote = quotes.find((quote) => quote.symbol === selected);
   const candles = history?.symbol === selected ? history.candles : [];
-  const rangeIsValid =
-    !(startDate || endDate) || Boolean(startDate && endDate && startDate <= endDate);
   const visibleError =
     startDate && endDate && startDate > endDate
       ? "Start date must be on or before end date."
@@ -340,14 +384,16 @@ export default function Home() {
           {loadingChart ? (
             <div className="chart-placeholder">Loading price history…</div>
           ) : candles.length > 0 ? (
-            <CandleChart
-              candles={candles}
-              hoverIndex={hoverIndex}
-              hoverPrice={hoverPrice}
-              setHoverIndex={setHoverIndex}
-              setHoverPrice={setHoverPrice}
-              onLinePosition={setCrosshairLineScreenX}
-            />
+            <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render price chart</div>}>
+              <CandleChart
+                candles={candles}
+                hoverIndex={hoverIndex}
+                hoverPrice={hoverPrice}
+                setHoverIndex={setHoverIndex}
+                setHoverPrice={setHoverPrice}
+                onLinePosition={setCrosshairLineScreenX}
+              />
+            </ErrorBoundary>
           ) : (
             <div className="chart-placeholder">No price history is available.</div>
           )}
@@ -367,7 +413,9 @@ export default function Home() {
               </>
             )}
           </div>
-          <MacdChart candles={candles} hoverIndex={hoverIndex} />
+          <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render MACD chart</div>}>
+            <MacdChart candles={candles} hoverIndex={hoverIndex} />
+          </ErrorBoundary>
           <div className="empty-axis" />
         </section>
 
@@ -381,7 +429,9 @@ export default function Home() {
               </>
             )}
           </div>
-          <RsiChart candles={candles} hoverIndex={hoverIndex} />
+          <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render RSI chart</div>}>
+            <RsiChart candles={candles} hoverIndex={hoverIndex} />
+          </ErrorBoundary>
           <div className="rsi-axis">
             <span className="rsi-level rsi-current">{candles[candles.length - 1]?.rsi_14?.toFixed(2) ?? "—"}</span>
             <span className="rsi-level rsi-average">{candles.length > 1 ? candles[candles.length - 2]?.rsi_14?.toFixed(2) ?? "—" : "—"}</span>
@@ -455,15 +505,10 @@ function CandleChart({
   const priceBottom = 330;
   const volumeTop = 240;
   const volumeBottom = 330;
-  const min = Math.min(...candles.map((candle) => candle.low));
-  const max = Math.max(...candles.map((candle) => candle.high));
-  const padding = (max - min || max * 0.02) * 0.08;
-  const lower = min - padding;
-  const upper = max + padding;
-  const candleMargin = 8; // keeps the full first/last candle body and wick inside the border with a small gap
+  const candleMargin = 8;
+  const { y, lower, upper } = useChartScale(candles);
   const x = (index: number) =>
     candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
-  const y = (value: number) => 8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
   const step = width / Math.max(candles.length, 1);
   const bodyWidth = Math.max(2, Math.min(9, step * 0.56));
   const maxVolume = Math.max(...candles.map((candle) => candle.volume ?? 0), 1);
@@ -471,21 +516,6 @@ function CandleChart({
   const averagePath = (key: (typeof AVERAGES)[number]["key"]) =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
   const lineRef = useRef<SVGLineElement | null>(null);
-
-  // Report the actual rendered position of the vertical crosshair line so the
-  // date label can lock to it directly instead of recomputing from hoverIndex.
-  // When hoverIndex clears (mouse left the chart), report null so the label
-  // hides even if Home's onMouseLeave didn't fire.
-  useEffect(() => {
-    if (!onLinePosition) return;
-    if (hoverIndex === null) {
-      onLinePosition(null);
-      return;
-    }
-    if (!lineRef.current) return;
-    const rect = lineRef.current.getBoundingClientRect();
-    onLinePosition(rect.left + rect.width / 2);
-  }, [hoverIndex, onLinePosition]);
 
   function onMouseMove(event: React.MouseEvent<SVGSVGElement>) {
     const svg = event.currentTarget;
@@ -503,6 +533,20 @@ function CandleChart({
 
     const price = upper - ((svgY - 8) / (priceBottom - 12)) * (upper - lower);
     setHoverPrice(Math.max(lower, Math.min(upper, price)));
+
+    // Report line position synchronously for zero-lag crosshair tracking
+    // Use the computed index (not stale hoverIndex state) since setState is async
+    if (onLinePosition && index >= 0 && index < candles.length) {
+      const lineX = x(index);
+      const screenPoint = svg.createSVGPoint();
+      screenPoint.x = lineX;
+      screenPoint.y = 0;
+      const screenCTM = svg.getScreenCTM();
+      if (screenCTM) {
+        const screenXY = screenPoint.matrixTransform(screenCTM);
+        onLinePosition(screenXY.x);
+      }
+    }
   }
 
   function onMouseLeave() {
@@ -515,7 +559,9 @@ function CandleChart({
     <svg
       className="candle-svg"
       viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
+      preserveAspectRatio="xMidYMid meet"
+      width="100%"
+      height="100%"
       role="img"
       aria-label="Candlestick price chart with volume and four moving averages"
       onMouseMove={onMouseMove}
@@ -586,17 +632,11 @@ function PriceAxis({
   hoverPrice: number | null;
   symbol: string;
 }) {
-  if (loading || !candles.length) return <div className="price-axis" />;
   const height = 330;
-  const priceBottom = 330;
-  const min = Math.min(...candles.map((candle) => candle.low));
-  const max = Math.max(...candles.map((candle) => candle.high));
-  const padding = (max - min || max * 0.02) * 0.08;
-  const lower = min - padding;
-  const upper = max + padding;
-  // Same y-scale as the candle chart so all price labels align with the
-  // grid lines and the horizontal tracking line.
-  const place = (value: number) => 8 + ((upper - value) / (upper - lower)) * (priceBottom - 12);
+  const { y, lower, upper, priceBottom } = useChartScale(candles);
+  const place = (value: number) => y(value);
+
+  if (loading || !candles.length) return <div className="price-axis" style={{ height }} />;
   const labels = [
     ...AVERAGES.map((average) => ({
       value: candles[candles.length - 1][average.key],
@@ -610,7 +650,7 @@ function PriceAxis({
     <div className="price-axis" style={{ height }}>
       {Array.from({ length: 6 }, (_, index) => (
         <span className="axis-value" key={index} style={{ top: `${(index / 5) * (priceBottom / height) * 100}%` }}>
-          {(upper - ((upper - lower) * index) / 5).toFixed(2)}
+          {priceLabel(upper - ((upper - lower) * index) / 5, symbol)}
         </span>
       ))}
       {labels.map((label) => (
@@ -620,7 +660,7 @@ function PriceAxis({
           title={label.title}
           style={{ top: `${(place(label.value) / height) * 100}%`, backgroundColor: label.color }}
         >
-          {label.value.toFixed(2)}
+          {priceLabel(label.value, symbol)}
         </span>
       ))}
       {hoverPrice !== null && (
@@ -655,7 +695,7 @@ function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: num
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
 
   return (
-    <svg className="indicator-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="MACD histogram, line, and signal">
+    <svg className="indicator-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" width="100%" height="100%" role="img" aria-label="MACD histogram, line, and signal">
       <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="indicator-grid" />
       {candles.map((candle, index) => {
         const positive = candle.macd_hist >= 0;
@@ -708,7 +748,7 @@ function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: numb
   const signalLine = signal.map(([index, value], point) => `${point === 0 ? "M" : "L"}${x(index)},${y(value)}`).join(" ");
 
   return (
-    <svg className="indicator-svg rsi-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Relative strength index">
+    <svg className="indicator-svg rsi-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" width="100%" height="100%" role="img" aria-label="Relative strength index">
       <rect x="0" y={y(70)} width={width} height={y(30) - y(70)} fill="#6d28d9" opacity="0.09" />
       {[30, 70].map((value) => <line key={value} x1="0" x2={width} y1={y(value)} y2={y(value)} className="rsi-guide" />)}
       <path d={signalLine} fill="none" stroke="#a16207" strokeWidth="1.4" />

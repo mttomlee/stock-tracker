@@ -1,0 +1,23 @@
+▲ Next.js 16.4.2 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://172.23.112.1:3002
+✓ Ready in 695ms
+⚠ Warning: Next.js ignored package-lock.json in C:\Users\tomle because it is outside the current Git repository (C:\Users\tomle\repos\stock-tracker).
+ To use this directory, set `turbopack.root` in your Next.js config.
+
+✓ Running next.config.ts took 50ms
+- Cache Components enabled
+- Partial Prefetching enabled
+- Experiments (use with caution):
+  ✓ agentFeedback
+
+ GET / 200 in 356ms (next.js: 197ms, application-code: 159ms)
+ GET / 200 in 40ms (next.js: 2ms, application-code: 38ms)
+ GET / 200 in 36ms (next.js: 2ms, application-code: 34ms)
+ GET / 200 in 49ms (next.js: 2ms, application-code: 46ms)
+ GET / 200 in 34ms (next.js: 2ms, application-code: 32ms)
+ GET / 200 in 33ms (next.js: 1.5ms, application-code: 32ms)
+ GET / 200 in 38ms (next.js: 1.9ms, application-code: 36ms)
+ GET / 200 in 36ms (next.js: 2ms, application-code: 34ms)
+ GET / 200 in 39ms (next.js: 1.9ms, application-code: 37ms)
+ GET / 200 in 37ms (next.js: 2ms, application-code: 35ms)

@@ -1,14 +1,25 @@
+import json
 import os
 import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from fastapi import HTTPException
 
-from backend.main import AddSymbol, add_symbol, get_stock_history, history_payload, weekly_window
+from backend.main import (
+    AddSymbol,
+    _latest_quote,
+    _persist_watchlist,
+    add_symbol,
+    fetch_symbol_info,
+    get_stock_history,
+    history_payload,
+    remove_from_watchlist,
+    weekly_window,
+)
 
 
 class MarketDataTests(unittest.TestCase):
@@ -24,7 +35,7 @@ class MarketDataTests(unittest.TestCase):
             index=pd.date_range("2025-01-01", periods=1),
         )
         with (
-            patch("backend.main.watchlist", ["TSM"]),
+            patch("backend.main._get_watchlist", return_value=["TSM"]),
             patch("backend.main._download", return_value=frame) as download,
         ):
             payload = get_stock_history(
@@ -122,13 +133,17 @@ class WatchlistAddTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as tmp:
             tmp_path = tmp.name
         try:
+            mock_req = MagicMock()
+            mock_req.headers.get.return_value = "XMLHttpRequest"
+
             with (
-                patch("backend.main.watchlist", ["TSM"]),
+                patch("backend.main._get_watchlist", return_value=["TSM"]),
                 patch("backend.main._download", return_value=frame),
                 patch("backend.main.fetch_symbol_info", return_value=("New Co", "NASDAQ")),
+                patch("backend.main._set_watchlist"),
                 patch("backend.main.WATCHLIST_PATH", Path(tmp_path)),
             ):
-                result = add_symbol(AddSymbol(symbol="NEW"))
+                result = add_symbol(AddSymbol(symbol="NEW"), mock_req)
         finally:
             os.unlink(tmp_path)
 
@@ -145,6 +160,175 @@ class WatchlistAddTests(unittest.TestCase):
                 }
             },
         )
+
+
+class RegressionTests(unittest.TestCase):
+    """Regression tests for thread-safe watchlist and error handling."""
+
+    def test_csrf_protection_rejects_missing_header(self):
+        """CSRF protection requires X-Requested-With header on mutating endpoints."""
+        mock_req = MagicMock()
+        mock_req.headers.get.return_value = None  # Missing header
+
+        with self.assertRaises(HTTPException) as error:
+            add_symbol(AddSymbol(symbol="NEW"), mock_req)
+
+        self.assertEqual(error.exception.status_code, 403)
+        self.assertIn("CSRF", error.exception.detail)
+
+    def test_csrf_protection_accepts_xmlhttprequest_header(self):
+        """CSRF protection accepts X-Requested-With: XMLHttpRequest."""
+        frame = pd.DataFrame(
+            {
+                "Open": [100.0, 101.0],
+                "High": [102.0, 103.0],
+                "Low": [99.0, 100.0],
+                "Close": [100.0, 101.0],
+                "Volume": [1000, 1100],
+            },
+            index=pd.date_range("2025-01-01", periods=2),
+        )
+        with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            mock_req = MagicMock()
+            mock_req.headers.get.return_value = "XMLHttpRequest"
+
+            with (
+                patch("backend.main._get_watchlist", return_value=["TSM"]),
+                patch("backend.main._download", return_value=frame),
+                patch("backend.main.fetch_symbol_info", return_value=("New Co", "NASDAQ")),
+                patch("backend.main._set_watchlist"),
+                patch("backend.main.WATCHLIST_PATH", Path(tmp_path)),
+            ):
+                result = add_symbol(AddSymbol(symbol="NEW"), mock_req)
+
+            self.assertIn("quote", result)
+            self.assertEqual(result["quote"]["symbol"], "NEW")
+        finally:
+            os.unlink(tmp_path)
+
+    def test_fetch_symbol_info_exception_handling(self):
+        """fetch_symbol_info falls back gracefully on yfinance errors."""
+        with patch("backend.main.yf.Ticker") as mock_ticker:
+            mock_ticker.return_value.info = {}
+            mock_ticker.side_effect = ConnectionError("network down")
+
+            name, exchange = fetch_symbol_info("NEW")
+
+            self.assertEqual(name, "NEW")
+            self.assertEqual(exchange, "MARKET")
+
+    def test_latest_quote_single_data_point(self):
+        """_latest_quote handles single data point (new/thin symbols)."""
+        frame = pd.DataFrame(
+            {
+                "Open": [100.0],
+                "High": [102.0],
+                "Low": [99.0],
+                "Close": [101.0],
+                "Volume": [1000],
+            },
+            index=pd.date_range("2025-01-01", periods=1),
+        )
+
+        quote = _latest_quote(frame, "NEW")
+
+        self.assertEqual(quote["price"], 101.0)
+        self.assertEqual(quote["change"], 0.0)
+        self.assertEqual(quote["change_percent"], 0.0)
+
+    def test_latest_quote_multiple_data_points(self):
+        """_latest_quote computes change correctly with multiple data points."""
+        frame = pd.DataFrame(
+            {
+                "Open": [100.0, 101.0],
+                "High": [102.0, 103.0],
+                "Low": [99.0, 100.0],
+                "Close": [100.0, 101.0],
+                "Volume": [1000, 1100],
+            },
+            index=pd.date_range("2025-01-01", periods=2),
+        )
+
+        quote = _latest_quote(frame, "NEW")
+
+        self.assertEqual(quote["price"], 101.0)
+        self.assertEqual(quote["change"], 1.0)
+        self.assertAlmostEqual(quote["change_percent"], 1.0)
+
+    def test_thread_safe_watchlist_access(self):
+        """_get_watchlist and _set_watchlist are thread-safe."""
+        from backend.main import _get_watchlist, _set_watchlist, _watchlist_lock
+        import threading
+        import time
+
+        results = []
+        errors = []
+
+        def writer(symbols):
+            try:
+                _set_watchlist(symbols)
+                time.sleep(0.001)
+                results.append(_get_watchlist())
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=writer, args=(["AAPL", "GOOG"],)) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(len(errors), 0)
+        # All reads should return consistent state
+        for result in results:
+            self.assertEqual(result, ["AAPL", "GOOG"])
+
+    def test_persist_watchlist_creates_file_and_directory(self):
+        """_persist_watchlist creates parent directory and file if missing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            watchlist_path = Path(tmpdir) / "data" / "watchlist.json"
+
+            with patch("backend.main.WATCHLIST_PATH", watchlist_path):
+                _persist_watchlist(["AAPL", "TSM"])
+
+            self.assertTrue(watchlist_path.exists())
+            with open(watchlist_path) as f:
+                data = json.load(f)
+
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["watchlistName"], "Watchlist 1")
+            self.assertEqual(len(data[0]["tickets"]), 2)
+            self.assertEqual(data[0]["tickets"][0]["symbol"], "AAPL")
+            self.assertEqual(data[0]["tickets"][1]["symbol"], "TSM")
+
+    def test_remove_from_watchlist_requires_csrf(self):
+        """remove_from_watchlist requires CSRF header."""
+        mock_req = MagicMock()
+        mock_req.headers.get.return_value = None
+
+        with patch("backend.main._get_watchlist", return_value=["AAPL"]):
+            with self.assertRaises(HTTPException) as error:
+                remove_from_watchlist("AAPL", mock_req)
+
+        self.assertEqual(error.exception.status_code, 403)
+
+    def test_remove_from_watchlist_with_csrf(self):
+        """remove_from_watchlist works with valid CSRF header."""
+        mock_req = MagicMock()
+        mock_req.headers.get.return_value = "XMLHttpRequest"
+
+        with (
+            patch("backend.main._get_watchlist", return_value=["AAPL", "TSM"]),
+            patch("backend.main._set_watchlist") as mock_set,
+            patch("backend.main._persist_watchlist") as mock_persist,
+        ):
+            result = remove_from_watchlist("AAPL", mock_req)
+
+        self.assertEqual(result, {"removed": "AAPL"})
+        mock_set.assert_called_once_with(["TSM"])
+        mock_persist.assert_called_once_with(["TSM"])
 
 
 if __name__ == "__main__":
