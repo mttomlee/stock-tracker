@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState, Component, ReactNode } from "react";
+import { FormEvent, useEffect, useRef, useState, Component, ReactNode, forwardRef } from "react";
 import DateRangePicker from "./DateRangePicker";
 
 type Quote = {
@@ -272,10 +272,14 @@ export default function Home() {
   const defaultStart = candles[0]?.date.slice(0, 10) ?? "";
   const defaultEnd = candles[candles.length - 1]?.date.slice(0, 10) ?? "";
 
-  // Position of the vertical crosshair line in screen coordinates, reported
-  // directly by the rendered <line> element in CandleChart. The date label
-  // locks to this value so its center always sits exactly on the line.
+  // Shared x-scale for all charts — single source of truth for horizontal mapping
+  const { x: chartX, width: chartViewBoxWidth } = useChartXScale(candles);
+  // Ref to the chart SVG container (first grid column) to measure rendered width
+  const chartSvgRef = useRef<HTMLDivElement>(null);
+  // Crosshair position in screen coordinates, computed from shared x-scale
   const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
+  // Hover index reported by CandleChart (used to compute crosshairLineScreenX)
+  const [crosshairHoverIndex, setCrosshairHoverIndex] = useState<number | null>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   const chartsWrapperRef = useRef<HTMLDivElement>(null);
   const [chartsWrapperLeft, setChartsWrapperLeft] = useState(0);
@@ -314,6 +318,23 @@ export default function Home() {
       window.removeEventListener("scroll", updatePosition, true);
     };
   }, []);
+
+  // Compute crosshair screen X from hoverIndex using shared x-scale and measured chart width
+  // This ensures the vertical line aligns perfectly with data points on ALL three charts
+  useEffect(() => {
+    if (crosshairHoverIndex === null || !chartSvgRef.current) {
+      setCrosshairLineScreenX(null);
+      return;
+    }
+    const chartContainer = chartSvgRef.current;
+    const containerRect = chartContainer.getBoundingClientRect();
+    // The chart SVG's viewBox width is chartViewBoxWidth (1000)
+    // The rendered width is containerRect.width
+    const scale = containerRect.width / chartViewBoxWidth;
+    const svgX = chartX(crosshairHoverIndex);
+    const screenX = containerRect.left + svgX * scale;
+    setCrosshairLineScreenX(screenX);
+  }, [crosshairHoverIndex, chartX, chartViewBoxWidth]);
 
   return (
     <div className="app">
@@ -415,13 +436,15 @@ export default function Home() {
             <div className="chart-placeholder">Loading price history…</div>
           ) : candles.length > 0 ? (
             <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render price chart</div>}>
-              <CandleChart
+              <CandleChartRef
+                ref={chartSvgRef}
                 candles={candles}
                 hoverIndex={hoverIndex}
                 hoverPrice={hoverPrice}
                 setHoverIndex={setHoverIndex}
                 setHoverPrice={setHoverPrice}
-                onLinePosition={setCrosshairLineScreenX}
+                xScale={chartX}
+                onHoverIndex={setCrosshairHoverIndex}
               />
             </ErrorBoundary>
           ) : (
@@ -540,14 +563,16 @@ function CandleChart({
   hoverPrice,
   setHoverIndex,
   setHoverPrice,
-  onLinePosition,
+  xScale,
+  onHoverIndex,
 }: {
   candles: Candle[];
   hoverIndex: number | null;
   hoverPrice: number | null;
   setHoverIndex: (index: number | null) => void;
   setHoverPrice: (price: number | null) => void;
-  onLinePosition?: (screenX: number | null) => void;
+  xScale: (index: number) => number;
+  onHoverIndex?: (index: number | null) => void;
 }) {
   const width = 1000;
   const height = 330;
@@ -555,7 +580,8 @@ function CandleChart({
   const volumeTop = 240;
   const volumeBottom = 330;
   const { y, lower, upper } = useChartScale(candles);
-  const { x, candleMargin } = useChartXScale(candles);
+  const { x: chartX, candleMargin } = useChartXScale(candles);
+  const x = xScale ?? chartX;
   const step = width / Math.max(candles.length, 1);
   const bodyWidth = Math.max(2, Math.min(9, step * 0.56));
   const maxVolume = Math.max(...candles.map((candle) => candle.volume ?? 0), 1);
@@ -575,30 +601,20 @@ function CandleChart({
     const svgY = svgPoint.y;
 
     const index = Math.round(((svgX - candleMargin) / (width - candleMargin * 2)) * (candles.length - 1));
-    setHoverIndex(Math.max(0, Math.min(candles.length - 1, index)));
+    const clampedIndex = Math.max(0, Math.min(candles.length - 1, index));
+    setHoverIndex(clampedIndex);
 
     const price = upper - ((svgY - 8) / (priceBottom - 12)) * (upper - lower);
     setHoverPrice(Math.max(lower, Math.min(upper, price)));
 
-    // Report line position synchronously for zero-lag crosshair tracking
-    // Use the computed index (not stale hoverIndex state) since setState is async
-    if (onLinePosition && index >= 0 && index < candles.length) {
-      const lineX = x(index);
-      const screenPoint = svg.createSVGPoint();
-      screenPoint.x = lineX;
-      screenPoint.y = 0;
-      const screenCTM = svg.getScreenCTM();
-      if (screenCTM) {
-        const screenXY = screenPoint.matrixTransform(screenCTM);
-        onLinePosition(screenXY.x);
-      }
-    }
+    // Report hover index for crosshair alignment across all charts
+    if (onHoverIndex) onHoverIndex(clampedIndex);
   }
 
   function onMouseLeave() {
     setHoverIndex(null);
     setHoverPrice(null);
-    if (onLinePosition) onLinePosition(null);
+    if (onHoverIndex) onHoverIndex(null);
   }
 
   return (
@@ -656,6 +672,17 @@ function CandleChart({
     </svg>
   );
 }
+
+// Wrap CandleChart with forwardRef to expose the SVG container ref
+const CandleChartWithRef = forwardRef<HTMLDivElement, Omit<Parameters<typeof CandleChart>[0], "ref">>((props, ref) => (
+  <div ref={ref} style={{ width: "100%", height: "100%" }}>
+    <CandleChart {...props} />
+  </div>
+));
+CandleChartWithRef.displayName = "CandleChartWithRef";
+
+// Use the ref-wrapped version in the component tree
+const CandleChartRef = CandleChartWithRef;
 
 function PriceAxis({
   candles,
