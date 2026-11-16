@@ -277,6 +277,8 @@ export default function Home() {
   // locks to this value so its center always sits exactly on the line.
   const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
   const footerRef = useRef<HTMLDivElement>(null);
+  const chartsWrapperRef = useRef<HTMLDivElement>(null);
+  const [chartsWrapperLeft, setChartsWrapperLeft] = useState(0);
   const [dateLabelLeft, setDateLabelLeft] = useState(0);
 
   // Recompute the label's left offset whenever the line moves. The label is
@@ -296,6 +298,22 @@ export default function Home() {
     left = Math.max(left, 8);
     setDateLabelLeft(left);
   }, [crosshairLineScreenX]);
+
+  // Track the charts wrapper's screen position for the global crosshair line
+  useEffect(() => {
+    const wrapper = chartsWrapperRef.current;
+    if (!wrapper) return;
+    const updatePosition = () => {
+      setChartsWrapperLeft(wrapper.getBoundingClientRect().left);
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, []);
 
   return (
     <div className="app">
@@ -382,7 +400,9 @@ export default function Home() {
           </div>
         )}
 
-        <section className="price-chart" aria-label="Price chart">
+        {/* Wrapper for all three charts to host a single continuous crosshair line */}
+        <div className="charts-wrapper" ref={chartsWrapperRef} style={{ position: "relative" }}>
+          <section className="price-chart" aria-label="Price chart">
           <div className="main-indicator-legend">
             <span>EMA <b>9</b> · <b>21</b> · <b>50</b> · <b>200</b></span>
             {candles.length > 0 && AVERAGES.map(({ key, label, color }) => (
@@ -447,6 +467,25 @@ export default function Home() {
             <span className="rsi-level rsi-average">{candles.length > 1 ? candles[candles.length - 2]?.rsi_14?.toFixed(2) ?? "—" : "—"}</span>
           </div>
         </section>
+
+        {/* Single continuous crosshair line spanning all three chart panes */}
+        {crosshairLineScreenX !== null && candles.length > 0 && (
+          <div
+            className="crosshair-line-global"
+            style={{
+              position: "absolute",
+              left: crosshairLineScreenX - chartsWrapperLeft,
+              top: 0,
+              bottom: 0,
+              width: "1px",
+              backgroundColor: "#5b5b66",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          />
+        )}
+
+        </div> {/* charts-wrapper */}
 
         <footer ref={footerRef} className="chart-footer" style={{ position: "relative" }}>
           <span>Log · Auto</span>
@@ -523,7 +562,6 @@ function CandleChart({
   const levels = Array.from({ length: 6 }, (_, index) => upper - ((upper - lower) * index) / 5);
   const averagePath = (key: (typeof AVERAGES)[number]["key"]) =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
-  const lineRef = useRef<SVGLineElement | null>(null);
 
   function onMouseMove(event: React.MouseEvent<SVGSVGElement>) {
     const svg = event.currentTarget;
@@ -607,23 +645,13 @@ function CandleChart({
         <path key={key} d={averagePath(key)} fill="none" stroke={color} strokeWidth="1.25" />
       ))}
       {hoverIndex !== null && hoverPrice !== null && (
-        <>
-          <line
-            ref={lineRef}
-            x1={x(hoverIndex)}
-            x2={x(hoverIndex)}
-            y1={8}
-            y2={height}
-            className="crosshair-line"
-          />
-          <line
-            x1="0"
-            x2={width}
-            y1={y(hoverPrice)}
-            y2={y(hoverPrice)}
-            className="crosshair-line"
-          />
-        </>
+        <line
+          x1="0"
+          x2={width}
+          y1={y(hoverPrice)}
+          y2={y(hoverPrice)}
+          className="crosshair-line"
+        />
       )}
     </svg>
   );
@@ -722,15 +750,6 @@ function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: num
       })}
       <path d={path("macd")} fill="none" stroke="#1d6fe0" strokeWidth="1.7" />
       <path d={path("macd_signal")} fill="none" stroke="#be123c" strokeWidth="1.5" />
-      {hoverIndex !== null && (
-        <line
-          x1={x(hoverIndex)}
-          x2={x(hoverIndex)}
-          y1={0}
-          y2={height}
-          className="crosshair-line"
-        />
-      )}
     </svg>
   );
 }
@@ -757,15 +776,6 @@ function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: numb
       {[30, 70].map((value) => <line key={value} x1="0" x2={width} y1={y(value)} y2={y(value)} className="rsi-guide" />)}
       <path d={signalLine} fill="none" stroke="#a16207" strokeWidth="1.4" />
       <path d={line} fill="none" stroke="#6d28d9" strokeWidth="1.7" />
-      {hoverIndex !== null && (
-        <line
-          x1={x(hoverIndex)}
-          x2={x(hoverIndex)}
-          y1={0}
-          y2={height}
-          className="crosshair-line"
-        />
-      )}
     </svg>
   );
 }
