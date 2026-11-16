@@ -112,6 +112,16 @@ function useChartScale(candles: Candle[]) {
   return { y, lower, upper, min, max, priceBottom };
 }
 
+// Shared x-scale hook — ensures all three charts use identical horizontal mapping
+// so the crosshair line appears as one continuous vertical line across panes.
+function useChartXScale(candles: Candle[]) {
+  const width = 1000;
+  const candleMargin = 8;
+  const x = (index: number) =>
+    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
+  return { x, width, candleMargin };
+}
+
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
@@ -505,10 +515,8 @@ function CandleChart({
   const priceBottom = 330;
   const volumeTop = 240;
   const volumeBottom = 330;
-  const candleMargin = 8;
   const { y, lower, upper } = useChartScale(candles);
-  const x = (index: number) =>
-    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
+  const { x, candleMargin } = useChartXScale(candles);
   const step = width / Math.max(candles.length, 1);
   const bodyWidth = Math.max(2, Math.min(9, step * 0.56));
   const maxVolume = Math.max(...candles.map((candle) => candle.volume ?? 0), 1);
@@ -683,13 +691,11 @@ function PriceAxis({
 function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
   const width = 1000;
   const height = 130;
-  const candleMargin = 8;
   const values = candles.flatMap((candle) => [candle.macd, candle.macd_signal, candle.macd_hist]);
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 0);
   const padding = (max - min || 1) * 0.12;
-  const x = (index: number) =>
-    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
+  const { x } = useChartXScale(candles);
   const y = (value: number) => 8 + ((max + padding - value) / (max - min + 2 * padding)) * (height - 16);
   const path = (key: "macd" | "macd_signal") =>
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
@@ -732,9 +738,7 @@ function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: num
 function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
   const width = 1000;
   const height = 170;
-  const candleMargin = 8;
-  const x = (index: number) =>
-    candleMargin + (index / Math.max(candles.length - 1, 1)) * (width - candleMargin * 2);
+  const { x } = useChartXScale(candles);
   const y = (value: number) => 8 + ((100 - value) / 100) * (height - 16);
   const points = candles
     .map((candle, index) => candle.rsi_14 === null ? null : [index, candle.rsi_14] as const)
