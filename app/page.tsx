@@ -274,8 +274,8 @@ export default function Home() {
 
   // Shared x-scale for all charts — single source of truth for horizontal mapping
   const { x: chartX, width: chartViewBoxWidth } = useChartXScale(candles);
-  // Ref to the chart SVG container (first grid column) to measure rendered width
-  const chartSvgRef = useRef<HTMLDivElement>(null);
+  // Ref to the chart SVG element to measure its actual rendered width
+  const chartSvgRef = useRef<SVGSVGElement>(null);
   // Crosshair position in screen coordinates, computed from shared x-scale
   const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
   // Hover index reported by CandleChart (used to compute crosshairLineScreenX)
@@ -436,7 +436,7 @@ export default function Home() {
             <div className="chart-placeholder">Loading price history…</div>
           ) : candles.length > 0 ? (
             <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render price chart</div>}>
-              <CandleChartRef
+              <CandleChart
                 ref={chartSvgRef}
                 candles={candles}
                 hoverIndex={hoverIndex}
@@ -557,15 +557,8 @@ export default function Home() {
   );
 }
 
-function CandleChart({
-  candles,
-  hoverIndex,
-  hoverPrice,
-  setHoverIndex,
-  setHoverPrice,
-  xScale,
-  onHoverIndex,
-}: {
+// CandleChart with forwarded ref to SVG element for measuring rendered width
+const CandleChart = forwardRef<SVGSVGElement, {
   candles: Candle[];
   hoverIndex: number | null;
   hoverPrice: number | null;
@@ -573,7 +566,15 @@ function CandleChart({
   setHoverPrice: (price: number | null) => void;
   xScale: (index: number) => number;
   onHoverIndex?: (index: number | null) => void;
-}) {
+}>(({
+  candles,
+  hoverIndex,
+  hoverPrice,
+  setHoverIndex,
+  setHoverPrice,
+  xScale,
+  onHoverIndex,
+}, ref) => {
   const width = 1000;
   const height = 330;
   const priceBottom = 330;
@@ -619,6 +620,7 @@ function CandleChart({
 
   return (
     <svg
+      ref={ref}
       className="candle-svg"
       viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="xMidYMid meet"
@@ -671,18 +673,9 @@ function CandleChart({
       )}
     </svg>
   );
-}
+});
 
-// Wrap CandleChart with forwardRef to expose the SVG container ref
-const CandleChartWithRef = forwardRef<HTMLDivElement, Omit<Parameters<typeof CandleChart>[0], "ref">>((props, ref) => (
-  <div ref={ref} style={{ width: "100%", height: "100%" }}>
-    <CandleChart {...props} />
-  </div>
-));
-CandleChartWithRef.displayName = "CandleChartWithRef";
-
-// Use the ref-wrapped version in the component tree
-const CandleChartRef = CandleChartWithRef;
+CandleChart.displayName = "CandleChart";
 
 function PriceAxis({
   candles,
