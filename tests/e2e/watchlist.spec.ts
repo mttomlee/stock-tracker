@@ -163,6 +163,26 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(pageObj.nameModal).toBeHidden();
   });
 
+  test('name validation error clears while correcting the input', async () => {
+    await pageObj.openWatchlistMenu();
+    await pageObj.watchlistMenuItem('New watchlist').click();
+    await pageObj.nameInput.waitFor({ state: 'visible' });
+
+    // Empty submit shows the error
+    await pageObj.nameModal.locator('button[type="submit"]').click();
+    await expect(pageObj.nameError).toBeVisible();
+    await expect(pageObj.nameInput).toHaveAttribute('aria-invalid', 'true');
+
+    // Typing a valid name clears the stale error and invalid state
+    await pageObj.nameInput.fill('Valid name');
+    await expect(pageObj.nameError).toBeHidden();
+    await expect(pageObj.nameInput).toHaveAttribute('aria-invalid', 'false');
+
+    // Close without creating anything
+    await pageObj.page.keyboard.press('Escape');
+    await expect(pageObj.nameModal).toBeHidden();
+  });
+
   test('can rename the active watchlist', async () => {
     const original = uniqueName('Rename');
     const renamed = uniqueName('Renamed');
@@ -362,5 +382,34 @@ test.describe('Watchlist & Chart E2E', () => {
     await pageObj.chartHoverLeave();
     await expect(pageObj.crosshairPriceLabel).toBeHidden();
     await expect(pageObj.crosshairDateLabel).toBeHidden();
+  });
+});
+
+test.describe('Watchlist mobile layout', () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+
+  test('a long active watchlist name does not overflow the viewport', async ({ page }) => {
+    const name = `Long ${'x'.repeat(20)}${Date.now()}`; // 38 characters, unique
+    await createWatchlistApi(name);
+    const pageObj = new WatchlistPage(page);
+    const viewportWidth = page.viewportSize()!.width;
+
+    try {
+      await pageObj.goto();
+      await pageObj.switchWatchlist(name);
+      await expect(pageObj.watchlistTrigger).toHaveText(name);
+      await pageObj.openWatchlistMenu();
+
+      const hasNoHorizontalScroll = await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      );
+      expect(hasNoHorizontalScroll).toBe(true);
+
+      const menuBox = await pageObj.watchlistMenu.boundingBox();
+      expect(menuBox).not.toBeNull();
+      expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewportWidth);
+    } finally {
+      await deleteWatchlistApi(name);
+    }
   });
 });

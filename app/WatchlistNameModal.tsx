@@ -18,6 +18,7 @@ export default function WatchlistNameModal({
   const [name, setName] = useState(initialName);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const latestName = useRef(initialName);
   const formRef = useRef<HTMLFormElement>(null);
   const title = mode === "create" ? "New watchlist" : "Rename watchlist";
   const submitLabel = mode === "create" ? "Create watchlist" : "Save name";
@@ -38,7 +39,10 @@ export default function WatchlistNameModal({
     try {
       await onSubmit(trimmed);
     } catch (reason) {
-      setError((reason as Error).message);
+      // Ignore a late error if the user already edited the field.
+      if (latestName.current.trim() === trimmed) {
+        setError((reason as Error).message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +106,11 @@ export default function WatchlistNameModal({
           value={name}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "watchlist-name-error" : undefined}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            latestName.current = event.target.value;
+            setName(event.target.value);
+            setError("");
+          }}
         />
         {error && (
           <p className="watchlist-name-error" id="watchlist-name-error" role="alert">
