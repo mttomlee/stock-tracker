@@ -5,9 +5,15 @@ export class WatchlistPage {
 
   // Selectors
   readonly heading: Locator;
+  readonly watchlistTrigger: Locator;
+  readonly watchlistMenu: Locator;
   readonly addSymbolButton: Locator;
   readonly watchlist: Locator;
   readonly watchRows: Locator;
+  readonly emptyState: Locator;
+  readonly nameModal: Locator;
+  readonly nameInput: Locator;
+  readonly nameError: Locator;
   readonly symbolInput: Locator;
   readonly addModal: Locator;
   readonly addModalSubmit: Locator;
@@ -23,11 +29,17 @@ export class WatchlistPage {
   constructor(page: Page) {
     this.page = page;
     this.heading = page.locator('h1');
+    this.watchlistTrigger = page.locator('.watchlist-trigger');
+    this.watchlistMenu = page.locator('#watchlist-menu');
     this.addSymbolButton = page.locator('.add-symbol');
     this.watchlist = page.locator('[aria-label="Watchlist"]');
     this.watchRows = page.locator('.watch-row-wrap');
+    this.emptyState = page.locator('.watchlist-empty');
+    this.nameModal = page.locator('.watchlist-name-modal');
+    this.nameInput = page.locator('#watchlist-name-input');
+    this.nameError = page.locator('.watchlist-name-error');
     this.symbolInput = page.locator('#symbol-input');
-    this.addModal = page.locator('.add-modal');
+    this.addModal = page.locator('.add-modal:not(.watchlist-name-modal)');
     this.addModalSubmit = page.locator('form.add-modal button[type="submit"]');
     this.modalClose = page.locator('.modal-close');
     this.dateRangeTrigger = page.locator('.date-range-trigger');
@@ -50,6 +62,50 @@ export class WatchlistPage {
 
   async getRowCount() {
     return await this.watchRows.count();
+  }
+
+  async openWatchlistMenu() {
+    if (!(await this.watchlistMenu.isVisible())) {
+      await this.watchlistTrigger.click();
+    }
+    await this.watchlistMenu.waitFor({ state: 'visible' });
+  }
+
+  watchlistMenuItem(name: string) {
+    return this.watchlistMenu.getByRole('menuitem', { name, exact: true });
+  }
+
+  watchlistOption(name: string) {
+    return this.watchlistMenu.getByRole('menuitemradio', { name, exact: true });
+  }
+
+  async switchWatchlist(name: string) {
+    await this.openWatchlistMenu();
+    await this.watchlistOption(name).click();
+    await this.watchlistMenu.waitFor({ state: 'hidden' });
+  }
+
+  async createWatchlist(name: string) {
+    await this.openWatchlistMenu();
+    await this.watchlistMenuItem('New watchlist').click();
+    await this.nameInput.waitFor({ state: 'visible' });
+    await this.nameInput.fill(name);
+    await this.nameModal.locator('button[type="submit"]').click();
+    await this.nameModal.waitFor({ state: 'hidden' });
+  }
+
+  async renameActiveWatchlist(name: string) {
+    await this.openWatchlistMenu();
+    await this.watchlistMenuItem('Rename').click();
+    await this.nameInput.waitFor({ state: 'visible' });
+    await this.nameInput.fill(name);
+    await this.nameModal.locator('button[type="submit"]').click();
+    await this.nameModal.waitFor({ state: 'hidden' });
+  }
+
+  async clickDeleteWatchlist() {
+    await this.openWatchlistMenu();
+    await this.watchlistMenuItem('Delete').click();
   }
 
   getRowBySymbol(symbol: string) {

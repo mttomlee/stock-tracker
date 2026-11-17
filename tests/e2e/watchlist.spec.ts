@@ -2,62 +2,215 @@ import { test, expect, request } from '@playwright/test';
 import { WatchlistPage } from './pages/WatchlistPage';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8000';
+const XHR_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
 
 // Known baseline symbols to ensure before each test
 const BASELINE_SYMBOLS = ['TSM', 'AMZN', 'GOOG', 'JPM'];
 
-// Helper: reset watchlist to a known baseline via API
-async function resetWatchlist() {
-  const context = await request.newContext({
-    extraHTTPHeaders: { 'X-Requested-With': 'XMLHttpRequest' },
-  });
+function uniqueName(prefix: string) {
+  return `${prefix} ${Date.now()}`;
+}
 
-  // Get current watchlist
-  const current = await context.get(`${API_URL}/api/watchlist`);
-  const data = (await current.json()) as { quotes?: { symbol: string }[] };
-  const symbols: string[] = data.quotes?.map((quote) => quote.symbol) ?? [];
-
-  // Remove all current symbols (deduplicate to avoid redundant calls)
-  for (const symbol of [...new Set(symbols)]) {
-    await context.delete(`${API_URL}/api/watchlist`, {
-      params: { symbol },
-    });
+async function createWatchlistApi(name: string) {
+  const context = await request.newContext({ extraHTTPHeaders: XHR_HEADERS });
+  try {
+    const response = await context.post(`${API_URL}/api/watchlists`, { data: { name } });
+    if (!response.ok()) throw new Error(`Failed to create ${name}: ${response.status()}`);
+  } finally {
+    await context.dispose();
   }
+}
 
-  // Add baseline symbols (skip if already present)
-  for (const symbol of BASELINE_SYMBOLS) {
-    const addRes = await context.post(`${API_URL}/api/watchlist/add_symbol`, {
-      data: { symbol },
+async function deleteWatchlistApi(name: string) {
+  const context = await request.newContext({ extraHTTPHeaders: XHR_HEADERS });
+  try {
+    await context.delete(`${API_URL}/api/watchlists/${encodeURIComponent(name)}`);
+  } finally {
+    await context.dispose();
+  }
+}
+
+// Helper: reset the first (initially active) watchlist to a known baseline via API
+async function resetWatchlist(): Promise<string> {
+  const context = await request.newContext({ extraHTTPHeaders: XHR_HEADERS });
+  let target = '';
+
+  try {
+    const listsResponse = await context.get(`${API_URL}/api/watchlists`);
+    const lists = ((await listsResponse.json()) as { watchlists?: { name: string }[] }).watchlists ?? [];
+    target = lists[0]?.name ?? '';
+    if (!target) throw new Error('No watchlist exists to reset');
+
+    // Get current watchlist
+    const current = await context.get(`${API_URL}/api/watchlist`, {
+      params: { watchlist: target },
     });
-    // 409 = already exists, which is fine
-    if (addRes.status() !== 201 && addRes.status() !== 409) {
-      throw new Error(`Failed to add ${symbol}: ${addRes.status()}`);
+    const data = (await current.json()) as { quotes?: { symbol: string }[] };
+    const symbols: string[] = data.quotes?.map((quote) => quote.symbol) ?? [];
+
+    // Remove all current symbols (deduplicate to avoid redundant calls)
+    for (const symbol of [...new Set(symbols)]) {
+      await context.delete(`${API_URL}/api/watchlist`, {
+        params: { symbol, watchlist: target },
+      });
     }
+
+    // Add baseline symbols (skip if already present)
+    for (const symbol of BASELINE_SYMBOLS) {
+      const addRes = await context.post(`${API_URL}/api/watchlist/add_symbol`, {
+        data: { symbol, watchlist: target },
+      });
+      // 409 = already exists, which is fine
+      if (addRes.status() !== 201 && addRes.status() !== 409) {
+        throw new Error(`Failed to add ${symbol}: ${addRes.status()}`);
+      }
+    }
+
+    // Verify the watchlist matches BASELINE_SYMBOLS
+    const verify = await context.get(`${API_URL}/api/watchlist`, {
+      params: { watchlist: target },
+    });
+    const verifyData = (await verify.json()) as { quotes?: { symbol: string }[] };
+    const verifySymbols = verifyData.quotes?.map((quote) => quote.symbol) ?? [];
+    const sortedBaseline = [...BASELINE_SYMBOLS].sort();
+    const sortedVerify = [...verifySymbols].sort();
+    if (JSON.stringify(sortedVerify) !== JSON.stringify(sortedBaseline)) {
+      throw new Error(`Watchlist verification failed: expected ${JSON.stringify(sortedBaseline)}, got ${JSON.stringify(sortedVerify)}`);
+    }
+  } finally {
+    await context.dispose();
   }
 
-  // Verify the watchlist matches BASELINE_SYMBOLS
-  const verify = await context.get(`${API_URL}/api/watchlist`);
-  const verifyData = (await verify.json()) as { quotes?: { symbol: string }[] };
-  const verifySymbols = verifyData.quotes?.map((quote) => quote.symbol) ?? [];
-  const sortedBaseline = [...BASELINE_SYMBOLS].sort();
-  const sortedVerify = [...verifySymbols].sort();
-  if (JSON.stringify(sortedVerify) !== JSON.stringify(sortedBaseline)) {
-    throw new Error(`Watchlist verification failed: expected ${JSON.stringify(sortedBaseline)}, got ${JSON.stringify(sortedVerify)}`);
-  }
-
-  await context.dispose();
+  return target;
 }
 
 test.describe('Watchlist & Chart E2E', () => {
   let pageObj: WatchlistPage;
+  let baselineWatchlist: string;
 
   test.beforeEach(async ({ page }) => {
     // Ensure known backend state before each test
-    await resetWatchlist();
+    baselineWatchlist = await resetWatchlist();
 
     pageObj = new WatchlistPage(page);
     await pageObj.goto();
     await pageObj.waitForWatchlistLoaded();
+  });
+
+  test('heading shows the active watchlist and the menu lists all watchlists', async () => {
+    await expect(pageObj.watchlistTrigger).toHaveText(baselineWatchlist);
+
+    await pageObj.openWatchlistMenu();
+    await expect(pageObj.watchlistMenu).toBeVisible();
+    await expect(pageObj.watchlistOption(baselineWatchlist)).toHaveAttribute('aria-checked', 'true');
+    await expect(pageObj.watchlistMenuItem('New watchlist')).toBeVisible();
+    await expect(pageObj.watchlistMenuItem('Rename')).toBeVisible();
+    await expect(pageObj.watchlistMenuItem('Delete')).toBeVisible();
+
+    // Escape closes the menu and restores focus to the trigger
+    await pageObj.page.keyboard.press('Escape');
+    await expect(pageObj.watchlistMenu).toBeHidden();
+    await expect(pageObj.watchlistTrigger).toBeFocused();
+  });
+
+  test('can switch to another watchlist and back', async () => {
+    const temp = uniqueName('Switch');
+    await createWatchlistApi(temp);
+
+    try {
+      await pageObj.goto();
+      await pageObj.waitForWatchlistLoaded();
+
+      await pageObj.switchWatchlist(temp);
+      await expect(pageObj.watchlistTrigger).toHaveText(temp);
+      await expect(pageObj.emptyState).toBeVisible();
+      await expect(pageObj.emptyState).toContainText('No symbols yet.');
+
+      await pageObj.switchWatchlist(baselineWatchlist);
+      await expect(pageObj.watchlistTrigger).toHaveText(baselineWatchlist);
+      await expect(pageObj.watchRows.first()).toBeVisible();
+    } finally {
+      await deleteWatchlistApi(temp);
+    }
+  });
+
+  test('can create a watchlist and it becomes active', async () => {
+    const temp = uniqueName('Create');
+
+    try {
+      await pageObj.createWatchlist(temp);
+      await expect(pageObj.watchlistTrigger).toHaveText(temp);
+      await expect(pageObj.emptyState).toBeVisible();
+
+      await pageObj.openWatchlistMenu();
+      await expect(pageObj.watchlistOption(temp)).toHaveAttribute('aria-checked', 'true');
+      await pageObj.page.keyboard.press('Escape');
+    } finally {
+      await deleteWatchlistApi(temp);
+    }
+  });
+
+  test('new watchlist modal rejects an empty name', async () => {
+    await pageObj.openWatchlistMenu();
+    await pageObj.watchlistMenuItem('New watchlist').click();
+    await pageObj.nameInput.waitFor({ state: 'visible' });
+
+    await pageObj.nameModal.locator('button[type="submit"]').click();
+    await expect(pageObj.nameError).toBeVisible();
+    await expect(pageObj.nameError).toHaveAttribute('role', 'alert');
+
+    await pageObj.page.keyboard.press('Escape');
+    await expect(pageObj.nameModal).toBeHidden();
+  });
+
+  test('can rename the active watchlist', async () => {
+    const original = uniqueName('Rename');
+    const renamed = uniqueName('Renamed');
+    await createWatchlistApi(original);
+
+    try {
+      await pageObj.goto();
+      await pageObj.waitForWatchlistLoaded();
+
+      await pageObj.switchWatchlist(original);
+      await pageObj.renameActiveWatchlist(renamed);
+
+      await expect(pageObj.watchlistTrigger).toHaveText(renamed);
+
+      await pageObj.openWatchlistMenu();
+      await expect(pageObj.watchlistOption(renamed)).toHaveAttribute('aria-checked', 'true');
+      await expect(pageObj.watchlistOption(original)).toHaveCount(0);
+      await pageObj.page.keyboard.press('Escape');
+    } finally {
+      await deleteWatchlistApi(original);
+      await deleteWatchlistApi(renamed);
+    }
+  });
+
+  test('can delete the active watchlist after confirming', async () => {
+    const temp = uniqueName('Delete');
+    await createWatchlistApi(temp);
+
+    try {
+      await pageObj.goto();
+      await pageObj.waitForWatchlistLoaded();
+
+      await pageObj.switchWatchlist(temp);
+      await expect(pageObj.watchlistTrigger).toHaveText(temp);
+
+      pageObj.page.once('dialog', (dialog) => dialog.accept());
+      await pageObj.clickDeleteWatchlist();
+
+      // Falls back to the first remaining watchlist
+      await expect(pageObj.watchlistTrigger).toHaveText(baselineWatchlist);
+      await expect(pageObj.watchRows.first()).toBeVisible();
+
+      await pageObj.openWatchlistMenu();
+      await expect(pageObj.watchlistOption(temp)).toHaveCount(0);
+      await pageObj.page.keyboard.press('Escape');
+    } finally {
+      await deleteWatchlistApi(temp);
+    }
   });
 
   test('loads watchlist with symbols and displays chart', async () => {
