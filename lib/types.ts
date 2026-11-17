@@ -1,3 +1,8 @@
+export type WatchlistSummary = {
+  name: string;
+  count: number;
+};
+
 export type Quote = {
   symbol: string;
   name: string;

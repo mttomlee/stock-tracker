@@ -5,6 +5,7 @@ import DateRangePicker from "./DateRangePicker";
 import ErrorBoundary from "./ErrorBoundary";
 import Watchlist from "./Watchlist";
 import AddSymbolModal from "./AddSymbolModal";
+import WatchlistNameModal from "./WatchlistNameModal";
 import CandleChart from "./charts/CandleChart";
 import PriceAxis from "./charts/PriceAxis";
 import MacdChart from "./charts/MacdChart";
@@ -12,11 +13,13 @@ import RsiChart from "./charts/RsiChart";
 import { AVERAGES } from "./charts/constants";
 import { request } from "../lib/api";
 import { dateLabel, exchangeLabel, priceLabel, signed, symbolLabel } from "../lib/format";
-import type { ChartRange, History, Quote } from "../lib/types";
+import type { ChartRange, History, Quote, WatchlistSummary } from "../lib/types";
+
+type NameModalState = { mode: "create" } | { mode: "rename"; name: string };
 
 export default function Home() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [selected, setSelected] = useState("TSM");
+  const [selected, setSelected] = useState("");
   const range: ChartRange = "1W";
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -30,10 +33,40 @@ export default function Home() {
   const [symbolInput, setSymbolInput] = useState("");
   const [adding, setAdding] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
+  const [activeWatchlist, setActiveWatchlist] = useState("");
+  const [loadingWatchlists, setLoadingWatchlists] = useState(true);
+  const [nameModal, setNameModal] = useState<NameModalState | null>(null);
+  const watchlistTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const rangeIsValid =
+    !(startDate || endDate) || Boolean(startDate && endDate && startDate <= endDate);
 
   useEffect(() => {
     const controller = new AbortController();
-    request<{ quotes: Quote[] }>("/api/watchlist", { signal: controller.signal })
+    request<{ watchlists: WatchlistSummary[] }>("/api/watchlists", { signal: controller.signal })
+      .then(({ watchlists: nextWatchlists }) => {
+        setWatchlists(nextWatchlists);
+        setActiveWatchlist(nextWatchlists[0]?.name ?? "");
+        if (nextWatchlists.length === 0) setLoadingQuotes(false);
+      })
+      .catch((reason: Error) => {
+        if (reason.name !== "AbortError") {
+          setError(`Could not load watchlists: ${reason.message}`);
+          setLoadingQuotes(false);
+        }
+      })
+      .finally(() => setLoadingWatchlists(false));
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!activeWatchlist) return;
+    const controller = new AbortController();
+    request<{ quotes: Quote[] }>(
+      `/api/watchlist?${new URLSearchParams({ watchlist: activeWatchlist })}`,
+      { signal: controller.signal },
+    )
       .then(({ quotes: nextQuotes }) => {
         setQuotes(nextQuotes);
         setSelected((current) =>
@@ -41,13 +74,19 @@ export default function Home() {
             ? current
             : (nextQuotes[0]?.symbol ?? ""),
         );
+        setLoadingChart(nextQuotes.length > 0 && rangeIsValid);
       })
       .catch((reason: Error) => {
-        if (reason.name !== "AbortError") setError(`Could not load watchlist: ${reason.message}`);
+        if (reason.name !== "AbortError") {
+          setError(`Could not load watchlist: ${reason.message}`);
+          setLoadingChart(false);
+        }
       })
-      .finally(() => setLoadingQuotes(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingQuotes(false);
+      });
     return () => controller.abort();
-  }, []);
+  }, [activeWatchlist, rangeIsValid]);
 
   useEffect(() => {
     if (!selected) return;
@@ -77,20 +116,17 @@ export default function Home() {
     return () => controller.abort();
   }, [endDate, range, selected, startDate]);
 
-  const rangeIsValid =
-    !(startDate || endDate) || Boolean(startDate && endDate && startDate <= endDate);
-
   async function addSymbol(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const symbol = symbolInput.trim().toUpperCase();
-    if (!symbol) return;
+    if (!symbol || !activeWatchlist) return;
     setAdding(true);
     setError("");
     try {
       const result = await request<{ quote: Quote }>("/api/watchlist/add_symbol", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({ symbol }),
+        body: JSON.stringify({ symbol, watchlist: activeWatchlist }),
       });
       const quote: Quote = result.quote;
       setQuotes((current) => [...current, quote]);
@@ -108,7 +144,7 @@ export default function Home() {
   async function removeSymbol(symbol: string) {
     setError("");
     try {
-      await request(`/api/watchlist?${new URLSearchParams({ symbol })}`, {
+      await request(`/api/watchlist?${new URLSearchParams({ symbol, watchlist: activeWatchlist })}`, {
         method: "DELETE",
         headers: { "X-Requested-With": "XMLHttpRequest" },
       });
@@ -121,6 +157,67 @@ export default function Home() {
       }
     } catch (reason) {
       setError(`Could not remove ${symbol}: ${(reason as Error).message}`);
+    }
+  }
+
+  async function refreshWatchlists() {
+    const { watchlists: nextWatchlists } = await request<{ watchlists: WatchlistSummary[] }>(
+      "/api/watchlists",
+    );
+    setWatchlists(nextWatchlists);
+    return nextWatchlists;
+  }
+
+  function switchWatchlist(name: string) {
+    if (name === activeWatchlist) return;
+    setQuotes([]);
+    setSelected("");
+    setHistory(null);
+    setHoverIndex(null);
+    setHoverPrice(null);
+    setLoadingChart(true);
+    setLoadingQuotes(true);
+    setActiveWatchlist(name);
+  }
+
+  function closeNameModal() {
+    setNameModal(null);
+    watchlistTriggerRef.current?.focus();
+  }
+
+  async function createWatchlist(name: string) {
+    await request("/api/watchlists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ name }),
+    });
+    await refreshWatchlists();
+    switchWatchlist(name);
+    closeNameModal();
+  }
+
+  async function renameWatchlist(currentName: string, name: string) {
+    await request(`/api/watchlists/${encodeURIComponent(currentName)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ name }),
+    });
+    await refreshWatchlists();
+    if (currentName === activeWatchlist) switchWatchlist(name);
+    closeNameModal();
+  }
+
+  async function deleteWatchlist(name: string) {
+    setError("");
+    try {
+      await request(`/api/watchlists/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      const nextWatchlists = await refreshWatchlists();
+      if (name === activeWatchlist) switchWatchlist(nextWatchlists[0]?.name ?? "");
+    } catch (reason) {
+      setError(`Could not delete ${name}: ${(reason as Error).message}`);
     }
   }
 
@@ -183,9 +280,17 @@ export default function Home() {
         quotes={quotes}
         selected={selected}
         loading={loadingQuotes}
+        activeName={activeWatchlist}
+        watchlists={watchlists}
+        loadingWatchlists={loadingWatchlists}
+        triggerRef={watchlistTriggerRef}
         onSelect={selectSymbol}
         onRemove={removeSymbol}
         onShowAdd={() => setShowAdd(true)}
+        onSwitch={switchWatchlist}
+        onCreate={() => setNameModal({ mode: "create" })}
+        onRename={() => setNameModal({ mode: "rename", name: activeWatchlist })}
+        onDelete={deleteWatchlist}
       />
 
       <main>
@@ -342,6 +447,19 @@ export default function Home() {
         onSubmit={addSymbol}
         onClose={() => setShowAdd(false)}
       />
+
+      {nameModal && (
+        <WatchlistNameModal
+          mode={nameModal.mode}
+          initialName={nameModal.mode === "rename" ? nameModal.name : ""}
+          onSubmit={(name) =>
+            nameModal.mode === "create"
+              ? createWatchlist(name)
+              : renameWatchlist(nameModal.name, name)
+          }
+          onClose={closeNameModal}
+        />
+      )}
     </div>
   );
 }
