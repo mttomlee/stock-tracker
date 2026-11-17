@@ -210,7 +210,7 @@ class RegressionTests(unittest.TestCase):
 
     def test_fetch_symbol_info_exception_handling(self):
         """fetch_symbol_info falls back gracefully on yfinance errors."""
-        with patch("backend.main.yf.Ticker") as mock_ticker:
+        with patch("backend.market_data.yf.Ticker") as mock_ticker:
             mock_ticker.return_value.info = {}
             mock_ticker.side_effect = ConnectionError("network down")
 
@@ -259,7 +259,7 @@ class RegressionTests(unittest.TestCase):
 
     def test_thread_safe_watchlist_access(self):
         """_get_watchlist and _set_watchlist are thread-safe."""
-        from backend.main import _get_watchlist, _set_watchlist, _watchlist_lock
+        from backend.main import _get_watchlist, _set_watchlist
         import threading
         import time
 
