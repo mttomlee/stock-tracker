@@ -134,6 +134,36 @@ test.describe('Watchlist & Chart E2E', () => {
     }
   });
 
+  test('heading uses the available width for the watchlist name', async () => {
+    const temp = uniqueName('Layout');
+    await createWatchlistApi(temp);
+
+    try {
+      await pageObj.goto();
+      await pageObj.waitForWatchlistLoaded();
+      await pageObj.switchWatchlist(temp);
+      await expect(pageObj.watchlistTrigger).toHaveText(temp);
+
+      const nameBox = await pageObj.page.locator('.watchlist-trigger-name').evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }));
+      // The full name is visible (the old shrink-to-fit trigger clipped it).
+      expect(nameBox.scrollWidth).toBeLessThanOrEqual(nameBox.clientWidth);
+      // ...and it uses the heading space instead of collapsing to its content.
+      expect(nameBox.clientWidth).toBeGreaterThan(150);
+
+      // The trigger still stops before the symbol count.
+      const triggerBox = await pageObj.watchlistTrigger.boundingBox();
+      const countBox = await pageObj.page.locator('.watchlist-heading > span').boundingBox();
+      expect(triggerBox).not.toBeNull();
+      expect(countBox).not.toBeNull();
+      expect(triggerBox!.x + triggerBox!.width).toBeLessThanOrEqual(countBox!.x + 1);
+    } finally {
+      await deleteWatchlistApi(temp);
+    }
+  });
+
   test('can create a watchlist and it becomes active', async () => {
     const temp = uniqueName('Create');
 

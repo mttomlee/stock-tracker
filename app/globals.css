@@ -79,6 +79,7 @@ input:focus-visible {
 }
 
 .watchlist-heading h1 {
+  flex: 1 1 auto;
   min-width: 0;
   margin: 0;
   font-size: 16px;
@@ -92,6 +93,7 @@ input:focus-visible {
 
 .watchlist-trigger {
   display: flex;
+  width: max-content;
   max-width: 100%;
   min-width: 0;
   align-items: center;
