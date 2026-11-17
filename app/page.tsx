@@ -273,17 +273,15 @@ export default function Home() {
   const defaultEnd = candles[candles.length - 1]?.date.slice(0, 10) ?? "";
 
   // Shared x-scale for all charts — single source of truth for horizontal mapping
-  const { x: chartX, width: chartViewBoxWidth } = useChartXScale(candles);
-  // Ref to the chart SVG element to measure its actual rendered width
+  const { x: chartX } = useChartXScale(candles);
+  // Ref to the chart SVG element (kept for potential future use)
   const chartSvgRef = useRef<SVGSVGElement>(null);
-  // Crosshair position in screen coordinates, computed from shared x-scale
+  // Crosshair position in screen coordinates, reported directly by CandleChart via SVG CTM
   const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
-  // Hover index reported by CandleChart (used to compute crosshairLineScreenX)
-  const [crosshairHoverIndex, setCrosshairHoverIndex] = useState<number | null>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   const chartsWrapperRef = useRef<HTMLDivElement>(null);
-  const [chartsWrapperLeft, setChartsWrapperLeft] = useState(0);
   const [dateLabelLeft, setDateLabelLeft] = useState(0);
+  const [crosshairLineLeft, setCrosshairLineLeft] = useState(0);
 
   // Recompute the label's left offset whenever the line moves. The label is
   // absolutely positioned inside the footer (position: relative), so its
@@ -303,38 +301,18 @@ export default function Home() {
     setDateLabelLeft(left);
   }, [crosshairLineScreenX]);
 
-  // Track the charts wrapper's screen position for the global crosshair line
+  // Crosshair screen X is now reported directly by CandleChart via onCrosshairScreenX
+  // using the SVG's CTM, which maps viewBox X to screen X for every pane.
+
+  // Recompute the global crosshair line's left offset relative to charts wrapper.
   useEffect(() => {
+    if (crosshairLineScreenX === null) return;
     const wrapper = chartsWrapperRef.current;
     if (!wrapper) return;
-    const updatePosition = () => {
-      setChartsWrapperLeft(wrapper.getBoundingClientRect().left);
-    };
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, []);
-
-  // Compute crosshair screen X from hoverIndex using shared x-scale and measured chart width
-  // This ensures the vertical line aligns perfectly with data points on ALL three charts
-  useEffect(() => {
-    if (crosshairHoverIndex === null || !chartSvgRef.current) {
-      setCrosshairLineScreenX(null);
-      return;
-    }
-    const chartContainer = chartSvgRef.current;
-    const containerRect = chartContainer.getBoundingClientRect();
-    // The chart SVG's viewBox width is chartViewBoxWidth (1000)
-    // The rendered width is containerRect.width
-    const scale = containerRect.width / chartViewBoxWidth;
-    const svgX = chartX(crosshairHoverIndex);
-    const screenX = containerRect.left + svgX * scale;
-    setCrosshairLineScreenX(screenX);
-  }, [crosshairHoverIndex, chartX, chartViewBoxWidth]);
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const left = crosshairLineScreenX - wrapperRect.left;
+    setCrosshairLineLeft(left);
+  }, [crosshairLineScreenX]);
 
   return (
     <div className="app">
@@ -444,7 +422,7 @@ export default function Home() {
                 setHoverIndex={setHoverIndex}
                 setHoverPrice={setHoverPrice}
                 xScale={chartX}
-                onHoverIndex={setCrosshairHoverIndex}
+                onCrosshairScreenX={setCrosshairLineScreenX}
               />
             </ErrorBoundary>
           ) : (
@@ -467,7 +445,7 @@ export default function Home() {
             )}
           </div>
           <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render MACD chart</div>}>
-            <MacdChart candles={candles} hoverIndex={hoverIndex} />
+            <MacdChart candles={candles} />
           </ErrorBoundary>
           <div className="empty-axis" />
         </section>
@@ -483,7 +461,7 @@ export default function Home() {
             )}
           </div>
           <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render RSI chart</div>}>
-            <RsiChart candles={candles} hoverIndex={hoverIndex} />
+            <RsiChart candles={candles} />
           </ErrorBoundary>
           <div className="rsi-axis">
             <span className="rsi-level rsi-current">{candles[candles.length - 1]?.rsi_14?.toFixed(2) ?? "—"}</span>
@@ -497,7 +475,7 @@ export default function Home() {
             className="crosshair-line-global"
             style={{
               position: "absolute",
-              left: crosshairLineScreenX - chartsWrapperLeft,
+              left: crosshairLineLeft,
               top: 0,
               bottom: 0,
               width: "1px",
@@ -565,7 +543,7 @@ const CandleChart = forwardRef<SVGSVGElement, {
   setHoverIndex: (index: number | null) => void;
   setHoverPrice: (price: number | null) => void;
   xScale: (index: number) => number;
-  onHoverIndex?: (index: number | null) => void;
+  onCrosshairScreenX?: (screenX: number | null) => void;
 }>(({
   candles,
   hoverIndex,
@@ -573,7 +551,7 @@ const CandleChart = forwardRef<SVGSVGElement, {
   setHoverIndex,
   setHoverPrice,
   xScale,
-  onHoverIndex,
+  onCrosshairScreenX,
 }, ref) => {
   const width = 1000;
   const height = 330;
@@ -608,14 +586,24 @@ const CandleChart = forwardRef<SVGSVGElement, {
     const price = upper - ((svgY - 8) / (priceBottom - 12)) * (upper - lower);
     setHoverPrice(Math.max(lower, Math.min(upper, price)));
 
-    // Report hover index for crosshair alignment across all charts
-    if (onHoverIndex) onHoverIndex(clampedIndex);
+    // Report the exact screen X of the crosshair using SVG's CTM (accounts for meet scaling)
+    if (onCrosshairScreenX && clampedIndex >= 0 && clampedIndex < candles.length) {
+      const lineX = x(clampedIndex);
+      const screenPoint = svg.createSVGPoint();
+      screenPoint.x = lineX;
+      screenPoint.y = 0;
+      const screenCTM = svg.getScreenCTM();
+      if (screenCTM) {
+        const screenXY = screenPoint.matrixTransform(screenCTM);
+        onCrosshairScreenX(screenXY.x);
+      }
+    }
   }
 
   function onMouseLeave() {
     setHoverIndex(null);
     setHoverPrice(null);
-    if (onHoverIndex) onHoverIndex(null);
+    if (onCrosshairScreenX) onCrosshairScreenX(null);
   }
 
   return (
@@ -623,7 +611,7 @@ const CandleChart = forwardRef<SVGSVGElement, {
       ref={ref}
       className="candle-svg"
       viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="xMidYMid meet"
+      preserveAspectRatio="none"
       width="100%"
       height="100%"
       role="img"
@@ -736,7 +724,7 @@ function PriceAxis({
   );
 }
 
-function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
+function MacdChart({ candles }: { candles: Candle[] }) {
   const width = 1000;
   const height = 130;
   const values = candles.flatMap((candle) => [candle.macd, candle.macd_signal, candle.macd_hist]);
@@ -749,7 +737,7 @@ function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: num
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
 
   return (
-    <svg className="indicator-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" width="100%" height="100%" role="img" aria-label="MACD histogram, line, and signal">
+    <svg className="indicator-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" width="100%" height="100%" role="img" aria-label="MACD histogram, line, and signal">
       <line x1="0" x2={width} y1={y(0)} y2={y(0)} className="indicator-grid" />
       {candles.map((candle, index) => {
         const positive = candle.macd_hist >= 0;
@@ -774,7 +762,7 @@ function MacdChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: num
   );
 }
 
-function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: number | null }) {
+function RsiChart({ candles }: { candles: Candle[] }) {
   const width = 1000;
   const height = 170;
   const { x } = useChartXScale(candles);
@@ -791,7 +779,7 @@ function RsiChart({ candles, hoverIndex }: { candles: Candle[]; hoverIndex: numb
   const signalLine = signal.map(([index, value], point) => `${point === 0 ? "M" : "L"}${x(index)},${y(value)}`).join(" ");
 
   return (
-    <svg className="indicator-svg rsi-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" width="100%" height="100%" role="img" aria-label="Relative strength index">
+    <svg className="indicator-svg rsi-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" width="100%" height="100%" role="img" aria-label="Relative strength index">
       <rect x="0" y={y(70)} width={width} height={y(30) - y(70)} fill="#6d28d9" opacity="0.09" />
       {[30, 70].map((value) => <line key={value} x1="0" x2={width} y1={y(value)} y2={y(value)} className="rsi-guide" />)}
       <path d={signalLine} fill="none" stroke="#a16207" strokeWidth="1.4" />

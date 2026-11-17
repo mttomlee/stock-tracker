@@ -35,7 +35,7 @@ export class WatchlistPage {
     this.chart = page.locator('svg.candle-svg');
     this.crosshairPriceLabel = page.locator('.crosshair-tracking-price');
     this.crosshairDateLabel = page.locator('.crosshair-tracking-date');
-    this.selectedSymbolHeading = page.locator('h2');
+    this.selectedSymbolHeading = page.locator('.quote-heading h2');
     this.errorBanner = page.locator('.error-banner');
   }
 
