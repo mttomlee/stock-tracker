@@ -33,6 +33,9 @@
 # docs (local audit reports, etc.)
 /docs/
 
+# runtime logs
+*.log
+
 # debug
 npm-debug.log*
 yarn-debug.log*
