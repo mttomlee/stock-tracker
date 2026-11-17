@@ -60,7 +60,7 @@ test.describe('Watchlist & Chart E2E', () => {
     await pageObj.waitForWatchlistLoaded();
   });
 
-  test('loads watchlist with symbols and displays chart', async ({ page }) => {
+  test('loads watchlist with symbols and displays chart', async () => {
     // Watchlist should have baseline symbols
     const count = await pageObj.getRowCount();
     expect(count).toBeGreaterThan(0);
@@ -73,7 +73,7 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(pageObj.chart).toBeVisible();
   });
 
-  test('remove button is hidden by default and appears on hover', async ({ page }) => {
+  test('remove button is hidden by default and appears on hover', async () => {
     const firstRow = pageObj.watchRows.first();
     const removeBtn = firstRow.locator('.remove-symbol');
 
@@ -85,7 +85,7 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(removeBtn).toBeVisible();
   });
 
-  test('can remove a stock symbol via the X button', async ({ page }) => {
+  test('can remove a stock symbol via the X button', async () => {
     const countBefore = await pageObj.getRowCount();
     const firstRow = pageObj.watchRows.first();
     const symbol = (await firstRow.locator('.watch-row-identity b').textContent())?.trim() ?? '';
@@ -101,7 +101,7 @@ test.describe('Watchlist & Chart E2E', () => {
     expect(await pageObj.getRowCount()).toBe(countBefore - 1);
   });
 
-  test('can add a new symbol and switch to it', async ({ page }) => {
+  test('can add a new symbol and switch to it', async () => {
     const countBefore = await pageObj.getRowCount();
     const newSymbol = 'MSFT';
 
@@ -135,7 +135,7 @@ test.describe('Watchlist & Chart E2E', () => {
     await pageObj.removeSymbol(newSymbol);
   });
 
-  test('duplicate add shows error but closes modal', async ({ page }) => {
+  test('duplicate add shows error but closes modal', async () => {
     const countBefore = await pageObj.getRowCount();
 
     // Pick a symbol already on the watchlist
@@ -158,7 +158,7 @@ test.describe('Watchlist & Chart E2E', () => {
     expect(countAfter).toBe(countBefore);
   });
 
-  test('date range picker opens and closes', async ({ page }) => {
+  test('date range picker opens and closes', async () => {
     await pageObj.openDatePicker();
     await expect(pageObj.datePickerPopover).toBeVisible();
 
@@ -166,7 +166,7 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(pageObj.datePickerPopover).toBeHidden();
   });
 
-  test('switching symbols updates chart', async ({ page }) => {
+  test('switching symbols updates chart', async () => {
     const symbols = BASELINE_SYMBOLS;
     for (const symbol of symbols) {
       const rowCount = await pageObj.getRowBySymbol(symbol).count();
