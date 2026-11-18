@@ -253,6 +253,7 @@ export default function Home() {
 
   const activeQuote = quotes.find((quote) => quote.symbol === selected);
   const candles = history?.symbol === selected ? history.candles : [];
+  const active = candles[hoverIndex ?? candles.length - 1];
   const macdHover = hoverMacd === null || candles.length === 0 ? null : { top: (macdScale(candles).y(hoverMacd) / MACD_HEIGHT) * 100, label: hoverMacd.toFixed(4) };
   const rsiHover = hoverRsi === null || candles.length === 0 ? null : { top: (rsiScale().y(hoverRsi) / RSI_HEIGHT) * 100, label: hoverRsi.toFixed(2) };
   const visibleError =
@@ -361,13 +362,24 @@ export default function Home() {
         {/* Wrapper for all three charts to host a single continuous crosshair line */}
         <div className="charts-wrapper" ref={chartsWrapperRef} style={{ position: "relative" }}>
           <section className="price-chart" aria-label="Price chart">
-          <div className="main-indicator-legend">
-            <span>EMA <b>9</b> · <b>21</b> · <b>50</b> · <b>200</b></span>
-            {candles.length > 0 && AVERAGES.map(({ key, label, color }) => (
-              <span key={key} style={{ color }} aria-label={label}>
-                {priceLabel(candles[candles.length - 1][key], selected)}
-              </span>
-            ))}
+          <div className="chart-legend-stack">
+            {active && (
+              <div className="ohlc-legend">
+                {([["O", "open", "Open"], ["H", "high", "High"], ["L", "low", "Low"], ["C", "close", "Close"]] as const).map(([short, key, full]) => (
+                  <span key={key} aria-label={`${full} ${priceLabel(active[key], selected)}`}>
+                    {short} <b>{priceLabel(active[key], selected)}</b>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="main-indicator-legend">
+              <span>EMA <b>9</b> · <b>21</b> · <b>50</b> · <b>200</b></span>
+              {active && AVERAGES.map(({ key, label, color }) => (
+                <span key={key} style={{ color }} aria-label={`${label} ${priceLabel(active[key], selected)}`}>
+                  {priceLabel(active[key], selected)}
+                </span>
+              ))}
+            </div>
           </div>
           {loadingChart ? (
             <div className="chart-placeholder">Loading price history…</div>

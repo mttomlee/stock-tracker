@@ -785,28 +785,54 @@ input:focus-visible {
   border-bottom: 1px solid var(--border);
 }
 
-.main-indicator-legend {
+.chart-legend-stack {
   position: absolute;
   z-index: 2;
   top: 10px;
   left: 12px;
   right: 84px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.main-indicator-legend,
+.ohlc-legend {
+  display: flex;
   width: fit-content;
+  max-width: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 14px;
   padding: 4px 8px;
+  border: 1px solid #c9c2b2;
   border-radius: 6px;
-  background: var(--paper);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(27, 27, 31, 0.08);
+  color: var(--ink);
   font-family: var(--mono);
   font-size: 12px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
 }
 
 .main-indicator-legend > span:first-child {
   font-family: "Plus Jakarta Sans", sans-serif;
   font-weight: 600;
 }
+
+.main-indicator-legend > span:not(:first-child),
+.ohlc-legend b {
+  display: inline-block;
+  min-width: 7ch;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ohlc-legend span { color: var(--muted); white-space: nowrap; }
+.ohlc-legend b    { color: var(--ink); font-weight: 500; }
 
 .chart-placeholder {
   display: grid;
@@ -1147,9 +1173,13 @@ input:focus-visible {
     grid-template-columns: minmax(0, 1fr) 58px;
   }
 
-  .main-indicator-legend {
+  .chart-legend-stack {
     left: 5px;
     right: 60px;
+  }
+
+  .main-indicator-legend,
+  .ohlc-legend {
     gap: 5px 8px;
     font-size: 9px;
   }
