@@ -911,7 +911,11 @@ input:focus-visible {
 }
 
 .empty-axis {
+  position: relative;
+  overflow: hidden;
   border-left: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .rsi-guide {
@@ -927,6 +931,7 @@ input:focus-visible {
 
 .rsi-axis {
   position: relative;
+  overflow: hidden;
   border-left: 1px solid var(--border);
   font-family: var(--mono);
   font-size: 11px;

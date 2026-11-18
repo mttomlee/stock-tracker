@@ -4,7 +4,7 @@ import type { MouseEvent } from "react";
 import type { Candle } from "../../lib/types";
 import { dateLabel } from "../../lib/format";
 import { AVERAGES, CHART_WIDTH, PRICE_HEIGHT } from "./constants";
-import { priceScale, timeScale } from "./scale";
+import { candleIndexAt, candleScreenX, priceScale, svgPoint, timeScale } from "./scale";
 
 type CandleChartProps = {
   candles: Candle[];
@@ -29,7 +29,7 @@ export default function CandleChart({
   const volumeTop = 240;
   const volumeBottom = PRICE_HEIGHT;
   const { y, lower, upper } = priceScale(candles);
-  const { x, candleMargin } = timeScale(candles);
+  const { x } = timeScale(candles);
   const step = width / Math.max(candles.length, 1);
   const bodyWidth = Math.max(2, Math.min(9, step * 0.56));
   const maxVolume = Math.max(...candles.map((candle) => candle.volume ?? 0), 1);
@@ -38,35 +38,19 @@ export default function CandleChart({
     candles.map((candle, index) => `${index === 0 ? "M" : "L"}${x(index)},${y(candle[key])}`).join(" ");
 
   function onMouseMove(event: MouseEvent<SVGSVGElement>) {
+    if (candles.length === 0) return;
     const svg = event.currentTarget;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return;
-    const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const svgPoint = point.matrixTransform(ctm.inverse());
-    const svgX = svgPoint.x;
-    const svgY = svgPoint.y;
+    const point = svgPoint(svg, event.clientX, event.clientY);
+    if (!point) return;
 
-    const index = Math.round(((svgX - candleMargin) / (width - candleMargin * 2)) * (candles.length - 1));
-    const clampedIndex = Math.max(0, Math.min(candles.length - 1, index));
-    setHoverIndex(clampedIndex);
+    const index = candleIndexAt(point.x, candles);
+    if (index === null) return;
+    setHoverIndex(index);
 
-    const price = upper - ((svgY - 8) / (priceBottom - 12)) * (upper - lower);
+    const price = upper - ((point.y - 8) / (priceBottom - 12)) * (upper - lower);
     setHoverPrice(Math.max(lower, Math.min(upper, price)));
 
-    // Report the exact screen X of the crosshair using SVG's CTM (accounts for meet scaling)
-    if (onCrosshairScreenX && clampedIndex >= 0 && clampedIndex < candles.length) {
-      const lineX = x(clampedIndex);
-      const screenPoint = svg.createSVGPoint();
-      screenPoint.x = lineX;
-      screenPoint.y = 0;
-      const screenCTM = svg.getScreenCTM();
-      if (screenCTM) {
-        const screenXY = screenPoint.matrixTransform(screenCTM);
-        onCrosshairScreenX(screenXY.x);
-      }
-    }
+    if (onCrosshairScreenX) onCrosshairScreenX(candleScreenX(svg, index, candles));
   }
 
   function onMouseLeave() {
