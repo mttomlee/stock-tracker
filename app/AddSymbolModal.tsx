@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormEvent } from "react";
+import { useEffect, type FormEvent } from "react";
 
 type AddSymbolModalProps = {
   open: boolean;
@@ -19,14 +19,29 @@ export default function AddSymbolModal({
   onSubmit,
   onClose,
 }: AddSymbolModalProps) {
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <form className="add-modal" onSubmit={onSubmit}>
+      <form
+        className="add-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-symbol-title"
+        onSubmit={onSubmit}
+      >
         <button className="modal-close" type="button" onClick={onClose} aria-label="Close">×</button>
-        <h2>Add symbol</h2>
+        <h2 id="add-symbol-title">Add symbol</h2>
         <p>Enter a ticker symbol to add it to your watchlist.</p>
         <label htmlFor="symbol-input">Symbol</label>
         <input

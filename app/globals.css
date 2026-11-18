@@ -373,6 +373,7 @@ input:focus-visible {
 }
 
 .watch-row-wrap:hover .remove-symbol,
+.watch-row-wrap:focus-within .remove-symbol,
 .remove-symbol:focus-visible {
   display: grid;
   place-items: center;
@@ -386,7 +387,8 @@ input:focus-visible {
   color: #d6336c;
 }
 
-.watch-row-wrap:hover .watch-row-price {
+.watch-row-wrap:hover .watch-row-price,
+.watch-row-wrap:focus-within .watch-row-price {
   visibility: hidden;
 }
 

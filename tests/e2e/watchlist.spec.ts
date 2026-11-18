@@ -205,6 +205,16 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(pageObj.nameModal).toBeHidden();
   });
 
+  test('add symbol modal closes on Escape and exposes dialog semantics', async () => {
+    await pageObj.addSymbolButton.click();
+    await pageObj.symbolInput.waitFor({ state: 'visible' });
+    await expect(pageObj.addModal).toHaveAttribute('role', 'dialog');
+    await expect(pageObj.addModal).toHaveAttribute('aria-modal', 'true');
+
+    await pageObj.page.keyboard.press('Escape');
+    await expect(pageObj.addModal).toBeHidden();
+  });
+
   test('name validation error clears while correcting the input', async () => {
     await pageObj.openWatchlistMenu();
     await pageObj.watchlistMenuItem('New watchlist').click();
@@ -298,6 +308,21 @@ test.describe('Watchlist & Chart E2E', () => {
     // Visible on hover
     await firstRow.hover();
     await expect(removeBtn).toBeVisible();
+  });
+
+  test('remove button is reachable with the keyboard', async () => {
+    const firstRow = pageObj.watchRows.first();
+    const removeBtn = firstRow.locator('.remove-symbol');
+
+    await expect(removeBtn).toBeHidden();
+
+    // Focusing the row reveals the control...
+    await firstRow.locator('.watch-row').focus();
+    await expect(removeBtn).toBeVisible();
+
+    // ...and Tab moves focus onto it.
+    await pageObj.page.keyboard.press('Tab');
+    await expect(removeBtn).toBeFocused();
   });
 
   test('can remove a stock symbol via the X button', async () => {
