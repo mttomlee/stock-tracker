@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -27,6 +27,7 @@ from backend.main import (
     rename_watchlist,
     weekly_window,
 )
+from backend.market_data import WARMUP_DAYS
 from backend.symbols import DEFAULT_WATCHLIST
 from backend.watchlist_store import (
     get_watchlist,
@@ -99,7 +100,7 @@ class MarketDataTests(unittest.TestCase):
 
         download.assert_called_once_with(
             tickers="TSM",
-            start=date(2025, 1, 1),
+            start=date(2025, 1, 1) - timedelta(days=WARMUP_DAYS),
             end=date(2025, 1, 4),
             interval="1d",
         )
@@ -131,7 +132,7 @@ class MarketDataTests(unittest.TestCase):
             }
         )
 
-        payload = history_payload(frame, "TEST", "1Y")
+        payload = history_payload(frame, "TEST", "1Y", chart_range="1Y")
 
         self.assertEqual(len(payload["candles"]), 220)
         self.assertGreater(payload["candles"][-1]["ema_200"], 100)
@@ -139,6 +140,93 @@ class MarketDataTests(unittest.TestCase):
         self.assertEqual(payload["candles"][-1]["volume"], 1219.0)
         self.assertGreater(payload["candles"][-1]["macd"], 0)
         self.assertEqual(payload["candles"][-1]["rsi_14"], 100.0)
+
+    def test_history_payload_indicators_use_prior_bars(self):
+        dates = pd.date_range("2024-01-01", periods=300, freq="D")
+        close = pd.Series(range(100, 400), index=dates, dtype=float)
+        frame = pd.DataFrame(
+            {"Open": close, "High": close + 1, "Low": close - 1, "Close": close},
+            index=dates,
+        )
+
+        payload = history_payload(
+            frame, "TEST", "custom", visible_from=pd.Timestamp(dates[250])
+        )
+
+        self.assertEqual(len(payload["candles"]), 50)
+        first = payload["candles"][0]
+        expected = float(close.ewm(span=200, adjust=False).mean().iloc[250])
+        self.assertAlmostEqual(first["ema_200"], expected)
+        self.assertNotAlmostEqual(first["ema_200"], first["close"])
+        self.assertNotEqual(first["macd"], 0.0)
+        self.assertIsNotNone(first["rsi_14"])
+
+    def test_history_preset_month_returns_only_the_last_month(self):
+        dates = pd.date_range("2024-01-01", periods=400, freq="D")
+        close = pd.Series(range(100, 500), index=dates, dtype=float)
+        frame = pd.DataFrame(
+            {"Open": close, "High": close + 1, "Low": close - 1, "Close": close},
+            index=dates,
+        )
+        visible = dates[dates >= dates[-1] - pd.DateOffset(months=1)]
+
+        with patch("backend.main._download", return_value=frame) as download:
+            payload = get_stock_history(
+                "TSM", chart_range="1M", start_date=None, end_date=None
+            )
+
+        download.assert_called_once_with(tickers="TSM", period="10y", interval="1d")
+        self.assertEqual(len(payload["candles"]), len(visible))
+        first = payload["candles"][0]
+        expected = float(close.ewm(span=200, adjust=False).mean().loc[visible[0]])
+        self.assertAlmostEqual(first["ema_200"], expected)
+        self.assertNotAlmostEqual(first["ema_200"], float(close.loc[visible[0]]))
+
+    def test_history_preset_week_returns_the_last_five_dates(self):
+        dates = pd.date_range("2025-01-01", periods=480, freq="30min")
+        close = pd.Series(range(100, 580), index=dates, dtype=float)
+        frame = pd.DataFrame(
+            {"Open": close, "High": close + 1, "Low": close - 1, "Close": close},
+            index=dates,
+        )
+
+        with patch("backend.main._download", return_value=frame) as download:
+            payload = get_stock_history(
+                "TSM", chart_range="1W", start_date=None, end_date=None
+            )
+
+        download.assert_called_once_with(tickers="TSM", period="60d", interval="30m")
+        self.assertEqual(
+            {candle["date"][:10] for candle in payload["candles"]},
+            {str(day.date()) for day in dates.normalize().unique()[-5:]},
+        )
+        self.assertEqual(len(payload["candles"]), 5 * 48)
+
+    def test_history_payload_localizes_visible_from_for_tz_aware_frames(self):
+        dates = pd.date_range("2025-01-01", periods=70, freq="D", tz="America/New_York")
+        close = pd.Series(range(100, 170), index=dates, dtype=float)
+        frame = pd.DataFrame(
+            {"Open": close, "High": close + 1, "Low": close - 1, "Close": close},
+            index=dates,
+        )
+
+        payload = history_payload(
+            frame, "TEST", "custom", visible_from=pd.Timestamp("2025-03-01")
+        )
+
+        self.assertEqual(payload["candles"][0]["date"][:10], "2025-03-01")
+
+    def test_history_preset_week_handles_short_history(self):
+        dates = pd.date_range("2025-01-06", periods=16, freq="30min")
+        close = pd.Series(range(100, 116), index=dates, dtype=float)
+        frame = pd.DataFrame(
+            {"Open": close, "High": close + 1, "Low": close - 1, "Close": close},
+            index=dates,
+        )
+
+        payload = history_payload(frame, "IPO", "1W", chart_range="1W")
+
+        self.assertEqual(len(payload["candles"]), 16)
 
     def test_weekly_window_rebases_peak_and_aligns_week_zero(self):
         dates = pd.date_range("2000-01-07", periods=5, freq="W-FRI")
