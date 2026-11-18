@@ -122,7 +122,11 @@ export default function Home() {
         setError("");
       })
       .catch((reason: Error) => {
-        if (reason.name !== "AbortError") setError(`Could not load chart: ${reason.message}`);
+        if (reason.name !== "AbortError") {
+          // A failed fetch must not leave the previous range's candles on screen.
+          setHistory(null);
+          setError(`Could not load chart: ${reason.message}`);
+        }
       })
       .finally(() => {
         if (controller.signal.aborted) return;
