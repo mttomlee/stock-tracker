@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from backend.market_data import (
+    WARMUP_DAYS,
     download_frame as _download,
     fetch_symbol_info,
     frame_for as _frame_for,
@@ -318,23 +319,29 @@ def get_stock_history(
             )
         data = _download(
             tickers=symbol,
-            start=start_date,
+            start=start_date - timedelta(days=WARMUP_DAYS),
             end=end_date + timedelta(days=1),
             interval="1d",
         )
         return history_payload(
-            data, symbol, f"{start_date.isoformat()} - {end_date.isoformat()}"
+            data,
+            symbol,
+            f"{start_date.isoformat()} - {end_date.isoformat()}",
+            visible_from=pd.Timestamp(start_date),
         )
 
+    # Warm-up first: the chart shows a trailing slice, indicators see all of it.
     period_settings = {
-        "1D": ("1d", "5m"),
-        "1W": ("5d", "30m"),
-        "1M": ("1mo", "1d"),
-        "1Y": ("1y", "1wk"),
+        # 5m ~1600 bars; 30m ~560 bars (Yahoo caps intraday history at 60 days)
+        "1D": ("1mo", "5m"),
+        "1W": ("60d", "30m"),
+        # 1d ~2500 bars; 1wk is small enough to take all history
+        "1M": ("10y", "1d"),
+        "1Y": ("max", "1wk"),
     }
     yahoo_period, interval = period_settings[chart_range]
     data = _download(tickers=symbol, period=yahoo_period, interval=interval)
-    return history_payload(data, symbol, chart_range)
+    return history_payload(data, symbol, chart_range, chart_range=chart_range)
 
 
 @app.get("/api/comparison/soxx-dotcom")
