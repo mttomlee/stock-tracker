@@ -30,6 +30,18 @@ async function deleteWatchlistApi(name: string) {
   }
 }
 
+async function addSymbolToWatchlistApi(name: string, symbol: string) {
+  const context = await request.newContext({ extraHTTPHeaders: XHR_HEADERS });
+  try {
+    const response = await context.post(`${API_URL}/api/watchlist/add_symbol`, {
+      data: { symbol, watchlist: name },
+    });
+    if (!response.ok()) throw new Error(`Failed to add ${symbol}: ${response.status()}`);
+  } finally {
+    await context.dispose();
+  }
+}
+
 // Helper: reset the first (initially active) watchlist to a known baseline via API
 async function resetWatchlist(): Promise<string> {
   const context = await request.newContext({ extraHTTPHeaders: XHR_HEADERS });
@@ -438,6 +450,183 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(pageObj.crosshairPriceLabel).toBeHidden();
     await expect(pageObj.crosshairDateLabel).toBeHidden();
   });
+
+  test('MACD and RSI panes track the pointer with a horizontal line, value label and crosshair', async ({ page }) => {
+    await expect(pageObj.chart).toBeVisible();
+
+    const globalLine = page.locator('.crosshair-line-global');
+    const dateLabel = pageObj.crosshairDateLabel;
+    await expect(globalLine).toHaveCount(0);
+    await expect(dateLabel).toBeHidden();
+
+    const macd = page.locator('.macd-chart .indicator-svg');
+    const macdTag = page.locator('.macd-chart .axis-tag');
+    const macdLine = page.locator('.macd-chart .crosshair-line');
+    await expect(macdTag).toBeHidden();
+
+    const macdBox = await macd.boundingBox();
+    if (!macdBox) throw new Error('MACD pane is not visible');
+    await page.mouse.move(macdBox.x + macdBox.width * 0.8, macdBox.y + macdBox.height * 0.7);
+    await expect(macdTag).toBeVisible();
+    await expect(macdLine).toHaveCount(1);
+    const macdValue = (await macdTag.textContent())?.trim() ?? '';
+    expect(macdValue).toMatch(/^-?\d+\.\d{4}$/);
+
+    // The pane also drives the single global crosshair and its date label
+    await expect(globalLine).toHaveCount(1);
+    await expect(dateLabel).toBeVisible();
+
+    // The tracked line is horizontal
+    const macdY1 = await macdLine.getAttribute('y1');
+    if (!macdY1) throw new Error('MACD crosshair line has no y1');
+    expect(macdY1).toBe(await macdLine.getAttribute('y2'));
+
+    // The horizontal line and the tag both move with the pointer vertically
+    const macdTop = await macdTag.evaluate((el) => (el as HTMLElement).style.top);
+    await page.mouse.move(macdBox.x + macdBox.width * 0.8, macdBox.y + macdBox.height * 0.3);
+    await expect(macdTag).not.toHaveText(macdValue);
+    await expect(macdLine).not.toHaveAttribute('y1', macdY1);
+    await expect.poll(() => macdTag.evaluate((el) => (el as HTMLElement).style.top)).not.toBe(macdTop);
+
+    // Moving horizontally snaps the crosshair to a different candle date
+    const macdDate = (await dateLabel.textContent())?.trim() ?? '';
+    await page.mouse.move(macdBox.x + macdBox.width * 0.3, macdBox.y + macdBox.height * 0.3);
+    await expect(dateLabel).not.toHaveText(macdDate);
+    await expect(globalLine).toHaveCount(1);
+
+    // Leaving the pane clears the line, label and global crosshair
+    await page.mouse.move(macdBox.x - 40, macdBox.y + macdBox.height / 2);
+    await expect(macdTag).toBeHidden();
+    await expect(macdLine).toHaveCount(0);
+    await expect(globalLine).toHaveCount(0);
+    await expect(dateLabel).toBeHidden();
+
+    const rsi = page.locator('.rsi-chart .indicator-svg');
+    const rsiTag = page.locator('.rsi-chart .axis-tag');
+    const rsiLine = page.locator('.rsi-chart .crosshair-line');
+    await expect(rsiTag).toBeHidden();
+
+    const rsiBox = await rsi.boundingBox();
+    if (!rsiBox) throw new Error('RSI pane is not visible');
+    await page.mouse.move(rsiBox.x + rsiBox.width * 0.8, rsiBox.y + rsiBox.height * 0.7);
+    await expect(rsiTag).toBeVisible();
+    await expect(rsiLine).toHaveCount(1);
+    const rsiText = (await rsiTag.textContent())?.trim() ?? '';
+    expect(rsiText).toMatch(/^\d+\.\d{2}$/);
+    expect(Number(rsiText)).toBeGreaterThan(0);
+    expect(Number(rsiText)).toBeLessThan(100);
+
+    await expect(globalLine).toHaveCount(1);
+    await expect(dateLabel).toBeVisible();
+
+    const rsiY1 = await rsiLine.getAttribute('y1');
+    if (!rsiY1) throw new Error('RSI crosshair line has no y1');
+    expect(rsiY1).toBe(await rsiLine.getAttribute('y2'));
+    const rsiTop = await rsiTag.evaluate((el) => (el as HTMLElement).style.top);
+    await page.mouse.move(rsiBox.x + rsiBox.width * 0.8, rsiBox.y + rsiBox.height * 0.3);
+    await expect(rsiLine).not.toHaveAttribute('y1', rsiY1);
+    await expect.poll(() => rsiTag.evaluate((el) => (el as HTMLElement).style.top)).not.toBe(rsiTop);
+
+    const rsiDate = (await dateLabel.textContent())?.trim() ?? '';
+    await page.mouse.move(rsiBox.x + rsiBox.width * 0.3, rsiBox.y + rsiBox.height * 0.3);
+    await expect(dateLabel).not.toHaveText(rsiDate);
+
+    await page.mouse.move(rsiBox.x - 40, rsiBox.y + rsiBox.height / 2);
+    await expect(rsiTag).toBeHidden();
+    await expect(rsiLine).toHaveCount(0);
+    await expect(globalLine).toHaveCount(0);
+    await expect(dateLabel).toBeHidden();
+  });
+
+  test('selecting another symbol clears the MACD hover tag, global crosshair and date label', async ({ page }) => {
+    const symbols = (
+      await pageObj.watchRows.locator('.watch-row-identity b').allTextContents()
+    ).map((symbol) => symbol.trim());
+    const current = (await pageObj.selectedSymbolHeading.textContent())?.trim() ?? '';
+    const nextSymbol = symbols.find((symbol) => symbol !== current);
+    if (!nextSymbol) {
+      test.skip(true, 'needs a second symbol in the baseline watchlist');
+      return;
+    }
+
+    const macd = page.locator('.macd-chart .indicator-svg');
+    const macdTag = page.locator('.macd-chart .axis-tag');
+    const globalLine = page.locator('.crosshair-line-global');
+    const dateLabel = pageObj.crosshairDateLabel;
+
+    const box = await macd.boundingBox();
+    if (!box) throw new Error('MACD pane is not visible');
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.6);
+    await expect(macdTag).toBeVisible();
+    await expect(globalLine).toHaveCount(1);
+    await expect(dateLabel).toBeVisible();
+
+    await pageObj.clickRow(nextSymbol);
+    await expect(pageObj.selectedSymbolHeading).toHaveText(nextSymbol);
+    await expect(pageObj.chart).toBeVisible();
+
+    await expect(macdTag).toBeHidden();
+    await expect(globalLine).toHaveCount(0);
+    await expect(dateLabel).toBeHidden();
+  });
+
+  test('a settled history fetch clears hover state from the previous series', async ({ page }) => {
+    await expect(pageObj.chart).toBeVisible();
+
+    const macd = page.locator('.macd-chart .indicator-svg');
+    const macdTag = page.locator('.macd-chart .axis-tag');
+    const globalLine = page.locator('.crosshair-line-global');
+    const dateLabel = pageObj.crosshairDateLabel;
+
+    let releaseHold = () => {};
+    const held = new Promise<void>((resolve) => { releaseHold = resolve; });
+    let markSeen = () => {};
+    const seen = new Promise<void>((resolve) => { markSeen = resolve; });
+    let holdNextHistory = false;
+
+    await page.route('**/api/stocks/history*', async (route) => {
+      if (!holdNextHistory) {
+        await route.continue();
+        return;
+      }
+      holdNextHistory = false;
+      markSeen();
+      await held;
+      await route.continue();
+    });
+
+    try {
+      // Change the date range so a history fetch starts while the old series is still plotted.
+      await pageObj.openDatePicker();
+      await page.locator('.date-picker-presets button').filter({ hasText: 'Past month' }).click();
+      const responseReceived = page.waitForResponse(
+        (response) => response.url().includes('/api/stocks/history') && response.url().includes('start='),
+      );
+      holdNextHistory = true;
+      await page.locator('.date-picker-apply').click();
+      await seen;
+
+      // Hover the MACD pane while the request is held: the old series is still rendered.
+      const box = await macd.boundingBox();
+      if (!box) throw new Error('MACD pane is not visible');
+      await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.6);
+      await expect(macdTag).toBeVisible();
+      await expect(globalLine).toHaveCount(1);
+      await expect(dateLabel).toBeVisible();
+
+      releaseHold();
+      await responseReceived;
+      await expect(pageObj.chart).toBeVisible();
+
+      // No pointer moved onto the pane after the new series landed.
+      await expect(macdTag).toBeHidden();
+      await expect(globalLine).toHaveCount(0);
+      await expect(dateLabel).toBeHidden();
+    } finally {
+      releaseHold();
+      await page.unroute('**/api/stocks/history*');
+    }
+  });
 });
 
 test.describe('Watchlist mobile layout', () => {
@@ -463,6 +652,59 @@ test.describe('Watchlist mobile layout', () => {
       const menuBox = await pageObj.watchlistMenu.boundingBox();
       expect(menuBox).not.toBeNull();
       expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewportWidth);
+    } finally {
+      await deleteWatchlistApi(name);
+    }
+  });
+
+  test('indicator panes track the pointer without overflowing the viewport', async ({ page }) => {
+    const name = uniqueName('MobileHover');
+    const pageObj = new WatchlistPage(page);
+
+    try {
+      await createWatchlistApi(name);
+      await addSymbolToWatchlistApi(name, 'TSM');
+      await pageObj.goto();
+      await pageObj.switchWatchlist(name);
+      await expect(pageObj.chart).toBeVisible();
+
+      for (const [svgClass, axisClass] of [
+        ['.macd-chart .indicator-svg', '.macd-chart .empty-axis'],
+        ['.rsi-chart .indicator-svg', '.rsi-chart .rsi-axis'],
+      ]) {
+        const svg = page.locator(svgClass);
+        const axis = page.locator(axisClass);
+        const tag = axis.locator('.axis-tag');
+        const line = page.locator(svgClass.replace(' .indicator-svg', ' .crosshair-line'));
+        const globalLine = page.locator('.crosshair-line-global');
+
+        // 60-70% height keeps the pointer clear of the top-left pane heading
+        const box = await svg.boundingBox();
+        if (!box) throw new Error('indicator pane is not visible');
+        await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.65);
+
+        await expect(tag).toBeVisible();
+        await expect(line).toHaveCount(1);
+        await expect(globalLine).toHaveCount(1);
+
+        // The tag sits inside its own axis column and does not widen the page
+        const tagBox = await tag.boundingBox();
+        if (!tagBox) throw new Error('axis tag is not visible');
+        const axisBox = await axis.boundingBox();
+        if (!axisBox) throw new Error('axis column is not visible');
+        expect(tagBox.x).toBeGreaterThanOrEqual(axisBox.x - 1);
+        expect(tagBox.x + tagBox.width).toBeLessThanOrEqual(axisBox.x + axisBox.width + 1);
+        const hasNoHorizontalScroll = await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        );
+        expect(hasNoHorizontalScroll).toBe(true);
+
+        // (1, 1) is a fixed in-viewport point outside every pane at 375px.
+        await page.mouse.move(1, 1);
+        await expect(tag).toBeHidden();
+        await expect(line).toHaveCount(0);
+        await expect(globalLine).toHaveCount(0);
+      }
     } finally {
       await deleteWatchlistApi(name);
     }

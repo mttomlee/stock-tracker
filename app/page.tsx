@@ -10,7 +10,8 @@ import CandleChart from "./charts/CandleChart";
 import PriceAxis from "./charts/PriceAxis";
 import MacdChart from "./charts/MacdChart";
 import RsiChart from "./charts/RsiChart";
-import { AVERAGES } from "./charts/constants";
+import { AVERAGES, MACD_HEIGHT, RSI_HEIGHT } from "./charts/constants";
+import { macdScale, rsiScale } from "./charts/scale";
 import { request } from "../lib/api";
 import { dateLabel, exchangeLabel, priceLabel, signed, symbolLabel } from "../lib/format";
 import type { ChartRange, History, Quote, WatchlistSummary } from "../lib/types";
@@ -28,6 +29,10 @@ export default function Home() {
   const [loadingChart, setLoadingChart] = useState(true);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+  const [hoverMacd, setHoverMacd] = useState<number | null>(null);
+  const [hoverRsi, setHoverRsi] = useState<number | null>(null);
+  // Crosshair position in screen coordinates, reported directly by the chart panes via SVG CTM
+  const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
   const [error, setError] = useState("");
   const dateLabelRef = useRef<HTMLSpanElement>(null);
   const [symbolInput, setSymbolInput] = useState("");
@@ -38,6 +43,15 @@ export default function Home() {
   const [loadingWatchlists, setLoadingWatchlists] = useState(true);
   const [nameModal, setNameModal] = useState<NameModalState | null>(null);
   const watchlistTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // Hover state belongs to the plotted series; clear it whenever the series changes.
+  function clearHover() {
+    setHoverIndex(null);
+    setHoverPrice(null);
+    setHoverMacd(null);
+    setHoverRsi(null);
+    setCrosshairLineScreenX(null);
+  }
 
   const rangeIsValid =
     !(startDate || endDate) || Boolean(startDate && endDate && startDate <= endDate);
@@ -111,7 +125,15 @@ export default function Home() {
         if (reason.name !== "AbortError") setError(`Could not load chart: ${reason.message}`);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoadingChart(false);
+        if (controller.signal.aborted) return;
+        // Hover belongs to the series that was plotted when it was set; the
+        // settled series may be shorter or empty, so index 0 is not a safe fallback.
+        setHoverIndex(null);
+        setHoverPrice(null);
+        setHoverMacd(null);
+        setHoverRsi(null);
+        setCrosshairLineScreenX(null);
+        setLoadingChart(false);
       });
     return () => controller.abort();
   }, [endDate, range, selected, startDate]);
@@ -130,6 +152,7 @@ export default function Home() {
       });
       const quote: Quote = result.quote;
       setQuotes((current) => [...current, quote]);
+      clearHover();
       setSelected(quote.symbol);
       setLoadingChart(rangeIsValid);
       setSymbolInput("");
@@ -151,6 +174,7 @@ export default function Home() {
       const remaining = quotes.filter((quote) => quote.symbol !== symbol);
       setQuotes(remaining);
       if (selected === symbol) {
+        clearHover();
         setSelected(remaining[0]?.symbol ?? "");
         setLoadingChart(remaining.length > 0 && rangeIsValid);
         if (remaining.length === 0) setHistory(null);
@@ -173,8 +197,7 @@ export default function Home() {
     setQuotes([]);
     setSelected("");
     setHistory(null);
-    setHoverIndex(null);
-    setHoverPrice(null);
+    clearHover();
     setLoadingChart(true);
     setLoadingQuotes(true);
     setActiveWatchlist(name);
@@ -223,12 +246,15 @@ export default function Home() {
 
   function selectSymbol(symbol: string) {
     if (selected === symbol) return;
+    clearHover();
     setSelected(symbol);
     setLoadingChart(rangeIsValid);
   }
 
   const activeQuote = quotes.find((quote) => quote.symbol === selected);
   const candles = history?.symbol === selected ? history.candles : [];
+  const macdHover = hoverMacd === null || candles.length === 0 ? null : { top: (macdScale(candles).y(hoverMacd) / MACD_HEIGHT) * 100, label: hoverMacd.toFixed(4) };
+  const rsiHover = hoverRsi === null || candles.length === 0 ? null : { top: (rsiScale().y(hoverRsi) / RSI_HEIGHT) * 100, label: hoverRsi.toFixed(2) };
   const visibleError =
     startDate && endDate && startDate > endDate
       ? "Start date must be on or before end date."
@@ -236,8 +262,7 @@ export default function Home() {
   const defaultStart = candles[0]?.date.slice(0, 10) ?? "";
   const defaultEnd = candles[candles.length - 1]?.date.slice(0, 10) ?? "";
 
-  // Crosshair position in screen coordinates, reported directly by CandleChart via SVG CTM
-  const [crosshairLineScreenX, setCrosshairLineScreenX] = useState<number | null>(null);
+  // Crosshair position is reported directly by the chart panes via SVG CTM.
   const footerRef = useRef<HTMLDivElement>(null);
   const chartsWrapperRef = useRef<HTMLDivElement>(null);
   const [dateLabelLeft, setDateLabelLeft] = useState(0);
@@ -317,6 +342,7 @@ export default function Home() {
             onApply={(start, end) => {
               setError("");
               if (start !== startDate || end !== endDate) {
+                clearHover();
                 setLoadingChart(true);
                 setStartDate(start);
                 setEndDate(end);
@@ -376,9 +402,22 @@ export default function Home() {
             )}
           </div>
           <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render MACD chart</div>}>
-            <MacdChart candles={candles} />
+            <MacdChart
+              candles={candles}
+              hoverIndex={hoverIndex}
+              hoverValue={hoverMacd}
+              setHoverIndex={setHoverIndex}
+              setHoverValue={setHoverMacd}
+              onCrosshairScreenX={setCrosshairLineScreenX}
+            />
           </ErrorBoundary>
-          <div className="empty-axis" />
+          <div className="empty-axis">
+            {macdHover && (
+              <span className="axis-tag" title="Tracking MACD" style={{ top: `${macdHover.top}%`, backgroundColor: "#5b5b66" }}>
+                {macdHover.label}
+              </span>
+            )}
+          </div>
         </section>
 
         <section className="rsi-chart" aria-label="RSI indicator">
@@ -392,11 +431,23 @@ export default function Home() {
             )}
           </div>
           <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render RSI chart</div>}>
-            <RsiChart candles={candles} />
+            <RsiChart
+              candles={candles}
+              hoverIndex={hoverIndex}
+              hoverValue={hoverRsi}
+              setHoverIndex={setHoverIndex}
+              setHoverValue={setHoverRsi}
+              onCrosshairScreenX={setCrosshairLineScreenX}
+            />
           </ErrorBoundary>
           <div className="rsi-axis">
             <span className="rsi-level rsi-current">{candles[candles.length - 1]?.rsi_14?.toFixed(2) ?? "—"}</span>
             <span className="rsi-level rsi-average">{candles.length > 1 ? candles[candles.length - 2]?.rsi_14?.toFixed(2) ?? "—" : "—"}</span>
+            {rsiHover && (
+              <span className="axis-tag" title="Tracking RSI" style={{ top: `${rsiHover.top}%`, backgroundColor: "#5b5b66" }}>
+                {rsiHover.label}
+              </span>
+            )}
           </div>
         </section>
 
