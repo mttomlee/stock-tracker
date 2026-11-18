@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 WEEKS_BEFORE = 52
 WEEKS_AFTER = 52
 
+# Indicators are seeded before the visible window; the seed's weight decays as
+# (1 - alpha) ** bars, so ~10 years of daily bars converge EMA-200.
+WARMUP_DAYS = 3650
+
 
 def fetch_symbol_info(symbol: str) -> tuple[str, str]:
     """Fetch longName and exchange from yfinance. Falls back to defaults on error."""
@@ -119,14 +123,43 @@ def _add_indicators(frame: pd.DataFrame) -> None:
     )
 
 
-def history_payload(frame: pd.DataFrame, symbol: str, period: str) -> dict:
+def _visible_frame(frame: pd.DataFrame, chart_range: str) -> pd.DataFrame:
+    """Trailing rows the chart shows for a preset range."""
+    index = frame.index
+    if chart_range == "1D":
+        return frame.loc[index[-1].normalize():]
+    if chart_range == "1W":
+        dates = index.normalize().unique()
+        return frame.loc[dates[max(0, len(dates) - 5)]:]
+    if chart_range == "1M":
+        return frame.loc[index[-1] - pd.DateOffset(months=1):]
+    return frame.loc[index[-1] - pd.DateOffset(years=1):]
+
+
+def history_payload(
+    frame: pd.DataFrame,
+    symbol: str,
+    period: str,
+    *,
+    chart_range: str | None = None,
+    visible_from: pd.Timestamp | None = None,
+) -> dict:
+    """Indicators are computed on the whole downloaded frame (the warm-up
+    before the visible window), then the frame is sliced to what the chart shows."""
     frame = frame_for(frame, symbol)
+    if not frame.empty:
+        _add_indicators(frame)
+        if visible_from is not None:
+            tz = getattr(frame.index, "tz", None)
+            since = visible_from.tz_localize(tz) if tz else visible_from
+            frame = frame.loc[since:]
+        elif chart_range:
+            frame = _visible_frame(frame, chart_range)
     if frame.empty:
         raise HTTPException(
             status_code=404, detail=f"No price history found for {symbol}."
         )
 
-    _add_indicators(frame)
     candles = []
     for timestamp, row in frame.iterrows():
         candles.append(
