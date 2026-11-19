@@ -440,10 +440,7 @@ export default function Home() {
           <div className="pane-heading">
             <b>RSI</b> 14
             {candles.length > 0 && (
-              <>
-                <span className="rsi-line-color">{candles[candles.length - 1].rsi_14?.toFixed(2) ?? "—"}</span>
-                <span className="rsi-signal-color">{candles.length > 1 ? candles[candles.length - 2].rsi_14?.toFixed(2) ?? "—" : "—"}</span>
-              </>
+              <span className="rsi-line-color">{candles[candles.length - 1].rsi_14?.toFixed(2) ?? "—"}</span>
             )}
           </div>
           <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render RSI chart</div>}>
@@ -458,7 +455,6 @@ export default function Home() {
           </ErrorBoundary>
           <div className="rsi-axis">
             <span className="rsi-level rsi-current">{candles[candles.length - 1]?.rsi_14?.toFixed(2) ?? "—"}</span>
-            <span className="rsi-level rsi-average">{candles.length > 1 ? candles[candles.length - 2]?.rsi_14?.toFixed(2) ?? "—" : "—"}</span>
             {rsiHover && (
               <span className="axis-tag" title="Tracking RSI" style={{ top: `${rsiHover.top}%`, backgroundColor: "#5b5b66" }}>
                 {rsiHover.label}

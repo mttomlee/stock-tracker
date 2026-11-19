@@ -538,6 +538,14 @@ test.describe('Watchlist & Chart E2E', () => {
     await expect(dateLabel).toBeHidden();
   });
 
+  test('RSI pane plots a single RSI line', async ({ page }) => {
+    await expect(pageObj.chart).toBeVisible();
+    const rsiPath = page.locator('.rsi-chart .indicator-svg path');
+    await expect(rsiPath).toHaveCount(1);
+    await expect(rsiPath).toHaveAttribute('stroke', '#6d28d9');
+    await expect(rsiPath).toHaveAttribute('d', /^M-?[\d.]/);
+  });
+
   test('selecting another symbol clears the MACD hover tag, global crosshair and date label', async ({ page }) => {
     const symbols = (
       await pageObj.watchRows.locator('.watch-row-identity b').allTextContents()
