@@ -236,26 +236,28 @@ test.describe('Chart legend tiles', () => {
     const ohlc = page.locator('.ohlc-legend');
     const ema = page.locator('.main-indicator-legend');
 
+    const ohlcBefore = ((await ohlc.textContent()) ?? '').trim();
+    const emaBefore = await readEmaText(ema);
+
     await pageObj.chartHoverAt(0.4, 0.36);
     await expect(pageObj.crosshairDateLabel).toBeVisible();
+    await expect(ohlc).not.toHaveText(ohlcBefore);
     await pageObj.chartHoverLeave();
     await expect(pageObj.crosshairDateLabel).toBeHidden();
 
-    // Fetch after the chart is rendered so the comparison uses the newest bar.
-    const candles = await fetchCandles(SYMBOL);
-    const last = candles[candles.length - 1];
-    expect(last).toBeTruthy();
+    await expect(ohlc).toHaveText(ohlcBefore);
+    expect(await readEmaText(ema)).toBe(emaBefore);
 
-    await expect(ohlc).toContainText(`O ${priceLabel(last.open, SYMBOL)}`);
-    await expect(ohlc).toContainText(`H ${priceLabel(last.high, SYMBOL)}`);
-    await expect(ohlc).toContainText(`L ${priceLabel(last.low, SYMBOL)}`);
-    await expect(ohlc).toContainText(`C ${priceLabel(last.close, SYMBOL)}`);
-
-    const emaText = await readEmaText(ema);
-    const values = EMA_KEYS.map((key) => priceLabel(last[key], SYMBOL));
-    expect(values.every((value) => hasValue(emaText, value))).toBe(true);
-    const positions = values.map((value) => valueIndex(emaText, value));
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    // Compare against the series the chart plotted, not a refetch: during market
+    // hours a refetch can return a newer, still-ticking in-progress bar.
+    const lastTitle = ((await page.locator('.candle-svg g > title').last().textContent()) ?? '').trim();
+    const match = /O ([\d.]+) · H ([\d.]+) · L ([\d.]+) · C ([\d.]+)/.exec(lastTitle);
+    expect(match).not.toBeNull();
+    const [open, high, low, close] = match!.slice(1).map(Number);
+    await expect(ohlc).toContainText(`O ${priceLabel(open, SYMBOL)}`);
+    await expect(ohlc).toContainText(`H ${priceLabel(high, SYMBOL)}`);
+    await expect(ohlc).toContainText(`L ${priceLabel(low, SYMBOL)}`);
+    await expect(ohlc).toContainText(`C ${priceLabel(close, SYMBOL)}`);
   });
 
   test('pointer events pass through the tiles to the chart', async ({ page }) => {
