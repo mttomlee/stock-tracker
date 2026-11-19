@@ -18,6 +18,7 @@ type Candle = {
   ema_21: number;
   ema_50: number;
   ema_200: number;
+  rsi_14: number | null;
 };
 
 function uniqueName(prefix: string) {
@@ -280,6 +281,77 @@ test.describe('Chart legend tiles', () => {
     await expect(pageObj.crosshairDateLabel).toBeVisible();
     expect(((await pageObj.crosshairDateLabel.textContent()) ?? '').trim()).not.toBe('');
   });
+
+  test('RSI tile shares the tile surface', async ({ page }) => {
+    const rsi = page.locator('.rsi-legend');
+    await expect(rsi).toBeVisible();
+
+    const styles = await page.evaluate(() => {
+      const read = (selector: string) => {
+        const cs = getComputedStyle(document.querySelector(selector) as HTMLElement);
+        return {
+          background: cs.backgroundColor,
+          radius: cs.borderRadius,
+          fontSize: cs.fontSize,
+          padding: `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`,
+          borderTopColor: cs.borderTopColor,
+          fontFamily: cs.fontFamily,
+          boxShadow: cs.boxShadow,
+          pointerEvents: cs.pointerEvents,
+        };
+      };
+      return { ohlc: read('.ohlc-legend'), rsi: read('.rsi-legend') };
+    });
+
+    expect(styles.rsi.background).toBe('rgb(255, 255, 255)');
+    expect(styles.rsi).toEqual(styles.ohlc);
+  });
+
+  test('RSI tile follows the hovered candle and falls back to the last', async ({ page }) => {
+    const rsiValue = page.locator('.rsi-legend .rsi-line-color');
+    const candles = await fetchCandles(SYMBOL);
+    expect(candles.length).toBeGreaterThan(1);
+    const initial = ((await rsiValue.textContent()) ?? '').trim();
+
+    const readAt = async (xRatio: number) => {
+      await pageObj.chartHoverAt(xRatio, 0.36);
+      await expect(pageObj.crosshairDateLabel).toBeVisible();
+
+      let matched: Candle | undefined;
+      await expect
+        .poll(async () => {
+          const label = ((await pageObj.crosshairDateLabel.textContent()) ?? '').trim();
+          const emaText = await readEmaText(page.locator('.main-indicator-legend'));
+          matched = candles.find(
+            (candidate) => dateLabel(candidate.date) === label && emaValuesInOrder(emaText, candidate),
+          );
+          return Boolean(matched);
+        })
+        .toBe(true);
+
+      const expected = matched!.rsi_14 === null ? '—' : matched!.rsi_14.toFixed(2);
+      await expect(rsiValue).toHaveText(expected);
+    };
+
+    await readAt(0.3);
+    await readAt(0.7);
+
+    await pageObj.chartHoverLeave();
+    await expect(pageObj.crosshairDateLabel).toBeHidden();
+    await expect(rsiValue).toHaveText(initial);
+  });
+
+  test('pointer events pass through the RSI tile to the chart', async ({ page }) => {
+    const box = await page.locator('.rsi-legend').boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThan(0);
+    expect(box!.height).toBeGreaterThan(0);
+
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+
+    await expect(page.locator('.crosshair-line-global')).toBeVisible();
+    await expect(pageObj.crosshairDateLabel).toBeVisible();
+  });
 });
 
 test.describe('Chart legend tiles — mobile', () => {
@@ -311,6 +383,23 @@ test.describe('Chart legend tiles — mobile', () => {
     const paneBox = await page.locator('.price-chart').boundingBox();
     expect(paneBox).not.toBeNull();
     expect(emaBox!.x - paneBox!.x).toBeCloseTo(5, 0);
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test('RSI tile fits at 375px without overflow', async ({ page }) => {
+    await openOwnWatchlist(page);
+
+    const rsi = page.locator('.rsi-legend');
+    await expect(rsi).toBeVisible();
+
+    const fontSize = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.rsi-legend') as HTMLElement).fontSize,
+    );
+    expect(fontSize).toBe('9px');
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,

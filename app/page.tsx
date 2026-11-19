@@ -437,11 +437,13 @@ export default function Home() {
         </section>
 
         <section className="rsi-chart" aria-label="RSI indicator">
-          <div className="pane-heading">
-            <b>RSI</b> 14
-            {candles.length > 0 && (
-              <span className="rsi-line-color">{candles[candles.length - 1].rsi_14?.toFixed(2) ?? "—"}</span>
-            )}
+          <div className="chart-legend-stack">
+            <div className="rsi-legend">
+              <span>RSI 14</span>
+              {active && (
+                <span className="rsi-line-color">{active.rsi_14?.toFixed(2) ?? "—"}</span>
+              )}
+            </div>
           </div>
           <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render RSI chart</div>}>
             <RsiChart
