@@ -922,8 +922,7 @@ input:focus-visible {
   color: #1d6fe0;
 }
 
-.macd-signal-color,
-.rsi-signal-color {
+.macd-signal-color {
   color: #be123c;
 }
 
@@ -954,7 +953,7 @@ input:focus-visible {
 }
 
 .rsi-line-color {
-  color: #a16207;
+  color: #6d28d9;
 }
 
 .rsi-axis {
@@ -976,11 +975,6 @@ input:focus-visible {
 
 .rsi-current {
   top: 56%;
-  background: #a16207;
-}
-
-.rsi-average {
-  top: 66%;
   background: #6d28d9;
 }
 
