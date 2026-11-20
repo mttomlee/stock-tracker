@@ -1,7 +1,7 @@
 import { test, expect, request } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { WatchlistPage } from './pages/WatchlistPage';
-import { dateLabel, priceLabel } from '../../lib/format';
+import { dateLabel, priceLabel, signed } from '../../lib/format';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8000';
 const XHR_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
@@ -341,6 +341,87 @@ test.describe('Chart legend tiles', () => {
     await expect(rsiValue).toHaveText(initial);
   });
 
+  test('change tile sits left of OHLC and follows the hovered candle', async ({ page }) => {
+    const tile = page.locator('.change-legend');
+    const ohlc = page.locator('.ohlc-legend');
+    await expect(tile).toBeVisible();
+
+    const tileBox = await tile.boundingBox();
+    const ohlcBox = await ohlc.boundingBox();
+    expect(tileBox).not.toBeNull();
+    expect(ohlcBox).not.toBeNull();
+    expect(tileBox!.x + tileBox!.width).toBeLessThanOrEqual(ohlcBox!.x);
+    expect(await tile.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
+
+    const candles = await fetchCandles(SYMBOL);
+    expect(candles.length).toBeGreaterThan(1);
+
+    const readTile = async () => [
+      ((await tile.locator('span').nth(0).textContent()) ?? '').trim(),
+      ((await tile.locator('span').nth(1).textContent()) ?? '').trim(),
+    ];
+    const expectedAt = (index: number) => {
+      const change = candles[index].close - candles[index - 1].close;
+      return [signed(change), signed((change / candles[index - 1].close) * 100, '%')];
+    };
+
+    const readAt = async (xRatio: number) => {
+      const before = (await ohlc.innerText()).replace(/\s+/g, ' ');
+      await pageObj.chartHoverAt(xRatio, 0.36);
+      await expect(pageObj.crosshairDateLabel).toBeVisible();
+
+      // Pin the candle with the date label plus all four EMA values; the date
+      // alone is ambiguous with several intraday candles per day. The render must
+      // also differ from the pre-hover legend, or the poll resolves the old candle.
+      let index = -1;
+      await expect
+        .poll(async () => {
+          const ohlcText = (await ohlc.innerText()).replace(/\s+/g, ' ');
+          if (ohlcText === before) return -1;
+          const label = ((await pageObj.crosshairDateLabel.textContent()) ?? '').trim();
+          const emaText = await readEmaText(page.locator('.main-indicator-legend'));
+          index = candles.findIndex(
+            (candidate) =>
+              dateLabel(candidate.date) === label &&
+              emaValuesInOrder(emaText, candidate) &&
+              [candidate.open, candidate.high, candidate.low, candidate.close].every((value) =>
+                ohlcText.includes(priceLabel(value, SYMBOL)),
+              ),
+          );
+          return index;
+        })
+        .toBeGreaterThan(0);
+
+      await expect.poll(readTile).toEqual(expectedAt(index));
+    };
+
+    // Reserving the value widths keeps the OHLC tile anchored while hovering.
+    const restingX = (await ohlc.boundingBox())!.x;
+    await readAt(0.3);
+    expect((await ohlc.boundingBox())!.x).toBeCloseTo(restingX, 0);
+    await readAt(0.7);
+    expect((await ohlc.boundingBox())!.x).toBeCloseTo(restingX, 0);
+
+    // First plotted candle has no predecessor: a dash must keep the tile's
+    // reserved width, so OHLC stays anchored.
+    await pageObj.chartHoverAt(0.005, 0.36);
+    await expect.poll(async () => ((await tile.locator('span').nth(0).textContent()) ?? '').trim()).toBe('—');
+    expect((await ohlc.boundingBox())!.x).toBeCloseTo(restingX, 0);
+
+    // Falls back to the last plotted candle: compare against the plotted series,
+    // not a refetch, because the newest bar can still be ticking.
+    await pageObj.chartHoverLeave();
+    await expect(pageObj.crosshairDateLabel).toBeHidden();
+    const titles = await page.locator('.candle-svg g > title').allTextContents();
+    const closes = titles.map((title) => Number(/C ([\d.]+)/.exec(title)![1]));
+    const last = closes.length - 1;
+    const change = closes[last] - closes[last - 1];
+    await expect.poll(readTile).toEqual([
+      signed(change),
+      signed((change / closes[last - 1]) * 100, '%'),
+    ]);
+  });
+
   test('pointer events pass through the RSI tile to the chart', async ({ page }) => {
     const box = await page.locator('.rsi-legend').boundingBox();
     expect(box).not.toBeNull();
@@ -376,9 +457,12 @@ test.describe('Chart legend tiles — mobile', () => {
     const fontSizes = await page.evaluate(() => ({
       ohlc: getComputedStyle(document.querySelector('.ohlc-legend') as HTMLElement).fontSize,
       ema: getComputedStyle(document.querySelector('.main-indicator-legend') as HTMLElement).fontSize,
+      change: getComputedStyle(document.querySelector('.change-legend') as HTMLElement).fontSize,
     }));
     expect(fontSizes.ohlc).toBe('9px');
     expect(fontSizes.ema).toBe('9px');
+    expect(fontSizes.change).toBe('9px');
+    await expect(page.locator('.change-legend')).toBeVisible();
 
     const paneBox = await page.locator('.price-chart').boundingBox();
     expect(paneBox).not.toBeNull();
