@@ -13,7 +13,7 @@ import RsiChart from "./charts/RsiChart";
 import { AVERAGES, MACD_HEIGHT, RSI_HEIGHT } from "./charts/constants";
 import { macdScale, rsiScale } from "./charts/scale";
 import { request } from "../lib/api";
-import { dateLabel, exchangeLabel, priceLabel, signed, symbolLabel } from "../lib/format";
+import { dateLabel, exchangeLabel, priceLabel, signed, signedPrice, symbolLabel } from "../lib/format";
 import type { ChartRange, History, Quote, WatchlistSummary } from "../lib/types";
 
 type NameModalState = { mode: "create" } | { mode: "rename"; name: string };
@@ -382,8 +382,8 @@ export default function Home() {
                     </>
                   ) : (
                     <>
-                      <span className={changeClass} aria-label={`Price change ${signed(closeChange)}`}>
-                        {signed(closeChange)}
+                      <span className={changeClass} aria-label={`Price change ${signedPrice(closeChange, selected)}`}>
+                        {signedPrice(closeChange, selected)}
                       </span>
                       <span className={changeClass} aria-label={`Percent change ${signed(changePercent, "%")}`}>
                         {signed(changePercent, "%")}

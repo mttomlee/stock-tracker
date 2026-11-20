@@ -1,7 +1,7 @@
 import { test, expect, request } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { WatchlistPage } from './pages/WatchlistPage';
-import { dateLabel, priceLabel, signed } from '../../lib/format';
+import { dateLabel, priceLabel, signed, signedPrice } from '../../lib/format';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8000';
 const XHR_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
@@ -362,7 +362,7 @@ test.describe('Chart legend tiles', () => {
     ];
     const expectedAt = (index: number) => {
       const change = candles[index].close - candles[index - 1].close;
-      return [signed(change), signed((change / candles[index - 1].close) * 100, '%')];
+      return [signedPrice(change, SYMBOL), signed((change / candles[index - 1].close) * 100, '%')];
     };
 
     const readAt = async (xRatio: number) => {
@@ -417,7 +417,7 @@ test.describe('Chart legend tiles', () => {
     const last = closes.length - 1;
     const change = closes[last] - closes[last - 1];
     await expect.poll(readTile).toEqual([
-      signed(change),
+      signedPrice(change, SYMBOL),
       signed((change / closes[last - 1]) * 100, '%'),
     ]);
   });

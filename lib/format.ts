@@ -36,3 +36,8 @@ export function signed(value: number, suffix = "") {
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
   return `${sign}${Math.abs(value).toFixed(2)}${suffix}`;
 }
+
+export function signedPrice(value: number, symbol: string) {
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  return `${sign}${priceLabel(Math.abs(value), symbol)}`;
+}
