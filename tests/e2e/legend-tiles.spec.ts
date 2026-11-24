@@ -19,6 +19,9 @@ type Candle = {
   ema_50: number;
   ema_200: number;
   rsi_14: number | null;
+  macd: number;
+  macd_signal: number;
+  macd_hist: number;
 };
 
 function uniqueName(prefix: string) {
@@ -431,6 +434,106 @@ test.describe('Chart legend tiles', () => {
     await expect(page.locator('.crosshair-line-global')).toBeVisible();
     await expect(pageObj.crosshairDateLabel).toBeVisible();
   });
+
+  test('MACD tile shares the tile surface', async ({ page }) => {
+    const macd = page.locator('.macd-legend');
+    await expect(macd).toBeVisible();
+
+    const styles = await page.evaluate(() => {
+      const read = (selector: string) => {
+        const cs = getComputedStyle(document.querySelector(selector) as HTMLElement);
+        return {
+          background: cs.backgroundColor,
+          border: `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}`,
+          radius: cs.borderRadius,
+          fontSize: cs.fontSize,
+          fontFamily: cs.fontFamily,
+          boxShadow: cs.boxShadow,
+          pointerEvents: cs.pointerEvents,
+        };
+      };
+      return { ohlc: read('.ohlc-legend'), macd: read('.macd-legend') };
+    });
+
+    expect(styles.macd.background).toBe('rgb(255, 255, 255)');
+    expect(styles.macd).toEqual(styles.ohlc);
+
+    await expect(macd.locator('> span').first()).toHaveText('MACD 12 · 26 · 9');
+    await expect(macd.locator('> span').nth(1)).toHaveClass(/macd-line-color/);
+    await expect(macd.locator('> span').nth(2)).toHaveClass(/macd-signal-color/);
+    await expect(macd.locator('> span').nth(3)).toHaveClass(/^(positive|negative)$/);
+
+    const colors = await page.evaluate(() => ({
+      line: getComputedStyle(document.querySelector('.macd-line-color') as HTMLElement).color,
+      signal: getComputedStyle(document.querySelector('.macd-signal-color') as HTMLElement).color,
+    }));
+    expect(colors.line).toBe('rgb(29, 111, 224)'); // #1d6fe0
+    expect(colors.signal).toBe('rgb(190, 18, 60)'); // #be123c
+  });
+
+  test('MACD tile follows the hovered candle and falls back to the last', async ({ page }) => {
+    const tile = page.locator('.macd-legend');
+    const line = tile.locator('> span').nth(1);
+    const signal = tile.locator('> span').nth(2);
+    const hist = tile.locator('> span').nth(3);
+    const candles = await fetchCandles(SYMBOL);
+    expect(candles.length).toBeGreaterThan(1);
+
+    const tileText = async () => ((await tile.textContent()) ?? '').trim();
+    const initial = {
+      line: ((await line.textContent()) ?? '').trim(),
+      signal: ((await signal.textContent()) ?? '').trim(),
+      hist: ((await hist.textContent()) ?? '').trim(),
+    };
+
+    const readAt = async (xRatio: number) => {
+      const before = await tileText();
+      await pageObj.chartHoverAt(xRatio, 0.36);
+      await expect(pageObj.crosshairDateLabel).toBeVisible();
+
+      // Pin the candle with the date label plus all four EMA values; the date
+      // alone is ambiguous with several intraday candles per day. The render
+      // must also differ from the pre-hover legend, or the poll resolves the
+      // previous hover.
+      let matched: Candle | undefined;
+      await expect
+        .poll(async () => {
+          if ((await tileText()) === before) return false;
+          const label = ((await pageObj.crosshairDateLabel.textContent()) ?? '').trim();
+          const emaText = await readEmaText(page.locator('.main-indicator-legend'));
+          matched = candles.find(
+            (candidate) => dateLabel(candidate.date) === label && emaValuesInOrder(emaText, candidate),
+          );
+          return Boolean(matched);
+        })
+        .toBe(true);
+
+      await expect(line).toHaveText(matched!.macd.toFixed(4));
+      await expect(signal).toHaveText(matched!.macd_signal.toFixed(4));
+      await expect(hist).toHaveText(signed(matched!.macd_hist, ''));
+    };
+
+    await readAt(0.3);
+    await readAt(0.7);
+
+    await pageObj.chartHoverLeave();
+    await expect(pageObj.crosshairDateLabel).toBeHidden();
+    await expect(line).toHaveText(initial.line);
+    await expect(signal).toHaveText(initial.signal);
+    await expect(hist).toHaveText(initial.hist);
+  });
+
+  test('pointer events pass through the MACD tile to the chart', async ({ page }) => {
+    const box = await page.locator('.macd-legend').boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThan(0);
+    expect(box!.height).toBeGreaterThan(0);
+
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+
+    await expect(page.locator('.crosshair-line-global')).toBeVisible();
+    await expect(pageObj.crosshairDateLabel).toBeVisible();
+  });
 });
 
 test.describe('Chart legend tiles — mobile', () => {
@@ -480,6 +583,23 @@ test.describe('Chart legend tiles — mobile', () => {
 
     const fontSize = await page.evaluate(
       () => getComputedStyle(document.querySelector('.rsi-legend') as HTMLElement).fontSize,
+    );
+    expect(fontSize).toBe('9px');
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test('MACD tile fits at 375px without overflow', async ({ page }) => {
+    await openOwnWatchlist(page);
+
+    const macd = page.locator('.macd-legend');
+    await expect(macd).toBeVisible();
+
+    const fontSize = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.macd-legend') as HTMLElement).fontSize,
     );
     expect(fontSize).toBe('9px');
 

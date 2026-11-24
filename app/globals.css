@@ -809,7 +809,8 @@ input:focus-visible {
 .main-indicator-legend,
 .ohlc-legend,
 .change-legend,
-.rsi-legend {
+.rsi-legend,
+.macd-legend {
   display: flex;
   width: fit-content;
   max-width: 100%;
@@ -829,14 +830,16 @@ input:focus-visible {
 }
 
 .main-indicator-legend > span:first-child,
-.rsi-legend > span:first-child {
+.rsi-legend > span:first-child,
+.macd-legend > span:first-child {
   font-family: "Plus Jakarta Sans", sans-serif;
   font-weight: 600;
 }
 
 .main-indicator-legend > span:not(:first-child),
 .ohlc-legend b,
-.rsi-legend > span:not(:first-child) {
+.rsi-legend > span:not(:first-child),
+.macd-legend > span:not(:first-child) {
   display: inline-block;
   min-width: 7ch;
   text-align: right;
@@ -920,23 +923,6 @@ input:focus-visible {
 
 .macd-chart {
   border-bottom: 1px solid var(--border);
-}
-
-.pane-heading {
-  position: absolute;
-  z-index: 2;
-  top: 8px;
-  left: 12px;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.pane-heading b {
-  font-family: "Plus Jakarta Sans", sans-serif;
-  font-weight: 600;
 }
 
 .macd-line-color {
@@ -1196,7 +1182,8 @@ input:focus-visible {
   .main-indicator-legend,
   .ohlc-legend,
   .change-legend,
-  .rsi-legend {
+  .rsi-legend,
+  .macd-legend {
     gap: 5px 8px;
     font-size: 9px;
   }

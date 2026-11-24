@@ -426,17 +426,19 @@ export default function Home() {
         </section>
 
         <section className="macd-chart" aria-label="MACD indicator">
-          <div className="pane-heading">
-            <b>MACD</b> 12 26 9
-            {candles.length > 0 && (
-              <>
-                <span className="macd-line-color">{candles[candles.length - 1].macd.toFixed(4)}</span>
-                <span className="macd-signal-color">{candles[candles.length - 1].macd_signal.toFixed(4)}</span>
-                <span className={candles[candles.length - 1].macd_hist >= 0 ? "positive" : "negative"}>
-                  {signed(candles[candles.length - 1].macd_hist, "")}
-                </span>
-              </>
-            )}
+          <div className="chart-legend-stack">
+            <div className="macd-legend">
+              <span>MACD 12 · 26 · 9</span>
+              {active && (
+                <>
+                  <span className="macd-line-color">{active.macd.toFixed(4)}</span>
+                  <span className="macd-signal-color">{active.macd_signal.toFixed(4)}</span>
+                  <span className={active.macd_hist >= 0 ? "positive" : "negative"}>
+                    {signed(active.macd_hist, "")}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
           <ErrorBoundary fallback={<div className="chart-error" role="alert">Failed to render MACD chart</div>}>
             <MacdChart
