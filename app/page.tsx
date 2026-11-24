@@ -376,10 +376,7 @@ export default function Home() {
               <div className="ohlc-row">
                 <div className="change-legend" role="group" aria-label="Change from previous close">
                   {closeChange === null || changePercent === null ? (
-                    <>
-                      <span aria-label="No previous candle">—</span>
-                      <span aria-hidden="true" />
-                    </>
+                    <span aria-label="No previous candle">—</span>
                   ) : (
                     <>
                       <span className={changeClass} aria-label={`Price change ${signedPrice(closeChange, selected)}`}>

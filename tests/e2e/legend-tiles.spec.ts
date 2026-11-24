@@ -353,6 +353,10 @@ test.describe('Chart legend tiles', () => {
     expect(tileBox!.x + tileBox!.width).toBeLessThanOrEqual(ohlcBox!.x);
     expect(await tile.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
 
+    // Values sit flush against the tile padding, not in a reserved value slot.
+    const firstValueBox = await tile.locator('span').first().boundingBox();
+    expect(firstValueBox!.x - tileBox!.x).toBeLessThan(12);
+
     const candles = await fetchCandles(SYMBOL);
     expect(candles.length).toBeGreaterThan(1);
 

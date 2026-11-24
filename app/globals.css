@@ -849,19 +849,14 @@ input:focus-visible {
 .change-legend {
   gap: 0 8px;
   white-space: nowrap;
+  /* Fixed width keeps the OHLC tile anchored while hovering; content starts at
+     the tile padding so short values don't leave a hole at the left edge.
+     shortcut: fits ≤9-char absolute values, widen if a symbol prints more. */
+  min-width: calc(16ch + 26px);
 }
 
-/* Reserve the value width so a hover never shifts the OHLC tile sideways.
-   shortcut: reserve holds ≤9 chars, widen if a symbol prints a 6-digit change. */
 .change-legend > span {
-  display: inline-block;
-  min-width: 7ch;
-  text-align: right;
   font-weight: 500;
-}
-
-.change-legend > span:first-child {
-  min-width: 9ch;
 }
 
 .chart-placeholder {
