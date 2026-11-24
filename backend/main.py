@@ -12,10 +12,8 @@ from backend.market_data import (
     WARMUP_DAYS,
     download_frame as _download,
     fetch_symbol_info,
-    frame_for as _frame_for,
     history_payload,
     latest_quote as _latest_quote,
-    weekly_window,
 )
 from backend.symbols import SYMBOL_PATTERN
 from backend.watchlist_store import (
@@ -342,24 +340,3 @@ def get_stock_history(
     yahoo_period, interval = period_settings[chart_range]
     data = _download(tickers=symbol, period=yahoo_period, interval=interval)
     return history_payload(data, symbol, chart_range, chart_range=chart_range)
-
-
-@app.get("/api/comparison/soxx-dotcom")
-def compare_semiconductor_cycle():
-    today = pd.Timestamp(date.today())
-    recent_peak_start = (today - pd.DateOffset(years=2)).date().isoformat()
-    soxx_data = _frame_for(
-        _download(tickers="SOXX", start="2023-01-01", interval="1wk"), "SOXX"
-    )
-    nasdaq_data = _frame_for(
-        _download(tickers="^IXIC", start="1998-01-01", end="2001-12-31", interval="1wk"),
-        "^IXIC",
-    )
-    soxx, _ = weekly_window(soxx_data, recent_peak_start)
-    nasdaq, _ = weekly_window(nasdaq_data, "1999-01-01", "2000-12-31")
-    return {
-        "series": [
-            {"name": "SOXX", **soxx},
-            {"name": "Nasdaq Composite", **nasdaq},
-        ]
-    }
