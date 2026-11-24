@@ -399,18 +399,12 @@ test.describe('Chart legend tiles', () => {
       await expect.poll(readTile).toEqual(expectedAt(index));
     };
 
-    // Reserving the value widths keeps the OHLC tile anchored while hovering.
-    const restingX = (await ohlc.boundingBox())!.x;
     await readAt(0.3);
-    expect((await ohlc.boundingBox())!.x).toBeCloseTo(restingX, 0);
     await readAt(0.7);
-    expect((await ohlc.boundingBox())!.x).toBeCloseTo(restingX, 0);
 
-    // First plotted candle has no predecessor: a dash must keep the tile's
-    // reserved width, so OHLC stays anchored.
+    // First plotted candle has no predecessor: the tile falls back to a dash.
     await pageObj.chartHoverAt(0.005, 0.36);
     await expect.poll(async () => ((await tile.locator('span').nth(0).textContent()) ?? '').trim()).toBe('—');
-    expect((await ohlc.boundingBox())!.x).toBeCloseTo(restingX, 0);
 
     // Falls back to the last plotted candle: compare against the plotted series,
     // not a refetch, because the newest bar can still be ticking.

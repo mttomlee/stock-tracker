@@ -849,10 +849,6 @@ input:focus-visible {
 .change-legend {
   gap: 0 8px;
   white-space: nowrap;
-  /* Fixed width keeps the OHLC tile anchored while hovering; content starts at
-     the tile padding so short values don't leave a hole at the left edge.
-     shortcut: fits ≤9-char absolute values, widen if a symbol prints more. */
-  min-width: calc(16ch + 26px);
 }
 
 .change-legend > span {
