@@ -798,8 +798,17 @@ input:focus-visible {
   pointer-events: none;
 }
 
+.ohlc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
 .main-indicator-legend,
 .ohlc-legend,
+.change-legend,
 .rsi-legend {
   display: flex;
   width: fit-content;
@@ -836,6 +845,15 @@ input:focus-visible {
 
 .ohlc-legend span { color: var(--muted); white-space: nowrap; }
 .ohlc-legend b    { color: var(--ink); font-weight: 500; }
+
+.change-legend {
+  gap: 0 8px;
+  white-space: nowrap;
+}
+
+.change-legend > span {
+  font-weight: 500;
+}
 
 .chart-placeholder {
   display: grid;
@@ -1177,6 +1195,7 @@ input:focus-visible {
 
   .main-indicator-legend,
   .ohlc-legend,
+  .change-legend,
   .rsi-legend {
     gap: 5px 8px;
     font-size: 9px;

@@ -13,7 +13,7 @@ import RsiChart from "./charts/RsiChart";
 import { AVERAGES, MACD_HEIGHT, RSI_HEIGHT } from "./charts/constants";
 import { macdScale, rsiScale } from "./charts/scale";
 import { request } from "../lib/api";
-import { dateLabel, exchangeLabel, priceLabel, signed, symbolLabel } from "../lib/format";
+import { dateLabel, exchangeLabel, priceLabel, signed, signedPrice, symbolLabel } from "../lib/format";
 import type { ChartRange, History, Quote, WatchlistSummary } from "../lib/types";
 
 type NameModalState = { mode: "create" } | { mode: "rename"; name: string };
@@ -258,6 +258,11 @@ export default function Home() {
   const activeQuote = quotes.find((quote) => quote.symbol === selected);
   const candles = history?.symbol === selected ? history.candles : [];
   const active = candles[hoverIndex ?? candles.length - 1];
+  const prevClose = candles[(hoverIndex ?? candles.length - 1) - 1]?.close;
+  // prevClose truthiness also guards the percent divide.
+  const closeChange = active && prevClose ? active.close - prevClose : null;
+  const changePercent = closeChange === null || !prevClose ? null : (closeChange / prevClose) * 100;
+  const changeClass = closeChange !== null && closeChange < 0 ? "negative" : "positive";
   const macdHover = hoverMacd === null || candles.length === 0 ? null : { top: (macdScale(candles).y(hoverMacd) / MACD_HEIGHT) * 100, label: hoverMacd.toFixed(4) };
   const rsiHover = hoverRsi === null || candles.length === 0 ? null : { top: (rsiScale().y(hoverRsi) / RSI_HEIGHT) * 100, label: hoverRsi.toFixed(2) };
   const visibleError =
@@ -368,12 +373,28 @@ export default function Home() {
           <section className="price-chart" aria-label="Price chart">
           <div className="chart-legend-stack">
             {active && (
-              <div className="ohlc-legend">
-                {([["O", "open", "Open"], ["H", "high", "High"], ["L", "low", "Low"], ["C", "close", "Close"]] as const).map(([short, key, full]) => (
-                  <span key={key} aria-label={`${full} ${priceLabel(active[key], selected)}`}>
-                    {short} <b>{priceLabel(active[key], selected)}</b>
-                  </span>
-                ))}
+              <div className="ohlc-row">
+                <div className="change-legend" role="group" aria-label="Change from previous close">
+                  {closeChange === null || changePercent === null ? (
+                    <span aria-label="No previous candle">—</span>
+                  ) : (
+                    <>
+                      <span className={changeClass} aria-label={`Price change ${signedPrice(closeChange, selected)}`}>
+                        {signedPrice(closeChange, selected)}
+                      </span>
+                      <span className={changeClass} aria-label={`Percent change ${signed(changePercent, "%")}`}>
+                        {signed(changePercent, "%")}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="ohlc-legend">
+                  {([["O", "open", "Open"], ["H", "high", "High"], ["L", "low", "Low"], ["C", "close", "Close"]] as const).map(([short, key, full]) => (
+                    <span key={key} aria-label={`${full} ${priceLabel(active[key], selected)}`}>
+                      {short} <b>{priceLabel(active[key], selected)}</b>
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
             <div className="main-indicator-legend">
