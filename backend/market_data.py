@@ -8,9 +8,6 @@ from backend.symbols import symbol_details
 
 logger = logging.getLogger(__name__)
 
-WEEKS_BEFORE = 52
-WEEKS_AFTER = 52
-
 # Indicators are seeded before the visible window; the seed's weight decays as
 # (1 - alpha) ** bars, so ~10 years of daily bars converge EMA-200.
 WARMUP_DAYS = 3650
@@ -186,43 +183,3 @@ def history_payload(
         )
     return {"symbol": symbol, "range": period, "candles": candles}
 
-
-def weekly_window(
-    frame: pd.DataFrame, search_start: str | None = None, search_end: str | None = None
-) -> tuple[dict, str]:
-    if frame.empty:
-        raise HTTPException(status_code=404, detail="No weekly price data was found.")
-    search = frame
-    if search_start:
-        search = search.loc[search_start:]
-    if search_end:
-        search = search.loc[:search_end]
-    if search.empty:
-        raise HTTPException(status_code=404, detail="No peak data was found in the search range.")
-
-    peak_date = search["High"].idxmax()
-    peak_position = int(frame.index.get_indexer([peak_date])[0])
-    low = max(0, peak_position - WEEKS_BEFORE)
-    high = min(len(frame), peak_position + WEEKS_AFTER + 1)
-    peak_high = float(frame.loc[peak_date, "High"])
-    candles = []
-    for position, (timestamp, row) in enumerate(frame.iloc[low:high].iterrows()):
-        values = {
-            field.lower(): float(row[field]) / peak_high * 100
-            for field in ("Open", "High", "Low", "Close")
-        }
-        candles.append(
-            {
-                "week": low + position - peak_position,
-                "date": pd.Timestamp(timestamp).date().isoformat(),
-                **values,
-            }
-        )
-    return (
-        {
-            "candles": candles,
-            "peak_date": pd.Timestamp(peak_date).date().isoformat(),
-            "peak_price": peak_high,
-        },
-        pd.Timestamp(peak_date).date().isoformat(),
-    )

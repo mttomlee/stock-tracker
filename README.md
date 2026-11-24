@@ -9,7 +9,6 @@ Watchlists and technical charts for stocks, in one place. A Next.js front end ba
 - **Candlestick charts** — OHLC candles with a date-range picker, including custom ranges.
 - **EMA overlays** — 9/21/50/200 exponential moving averages over the price chart.
 - **RSI and MACD panes** — aligned to the same time axis as the price chart.
-- **SOXX vs Nasdaq comparison** — the semis ETF plotted against the dot-com-era Nasdaq.
 - **Responsive layout** — works from a 375 px phone viewport up to wide desktop.
 
 ## Stack
@@ -68,7 +67,6 @@ Open [http://localhost:3000](http://localhost:3000). The API runs on [http://loc
 | `POST` | `/api/watchlist/add_symbol` | Add a symbol to a watchlist |
 | `DELETE` | `/api/watchlist` | Remove a symbol from a watchlist |
 | `GET` | `/api/stocks/history` | OHLC series with EMA, RSI, and MACD |
-| `GET` | `/api/comparison/soxx-dotcom` | SOXX vs Nasdaq comparison series |
 
 Mutating requests (`POST`, `PATCH`, `DELETE`) must send `X-Requested-With: XMLHttpRequest`; the API rejects them with `403` otherwise.
 
